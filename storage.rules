@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isFromProperty(propertyId) {
+      return request.auth.token.propertyId == propertyId;
+    }
+
+    match /{propertyId}/exports/{fileName} {
+      // Only users belonging to the property can read/write exports (Excels/PDFs)
+      allow read: if isAuthenticated() && isFromProperty(propertyId);
+      allow write: if isAuthenticated() && isFromProperty(propertyId);
+    }
+    
+    match /{propertyId}/invoices/{fileName} {
+      allow read: if isAuthenticated() && isFromProperty(propertyId);
+      allow write: if false; // Only Cloud Functions can generate authoritative invoice PDFs
+    }
+    
+    match /{propertyId}/expenses/{fileName} {
+      allow read: if isAuthenticated() && isFromProperty(propertyId);
+      allow write: if isAuthenticated() && isFromProperty(propertyId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
