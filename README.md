@@ -1,32 +1,52 @@
-# React + TypeScript + Vite
+# Hotel GSR - Property Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A modern, cloud-based Property Management System (PMS) designed for Hotel GSR. This application handles everything from front-desk operations (room board, check-ins) to back-office accounting (POS, payroll, expenses).
 
-Currently, two official plugins are available:
+## 🏨 Features
+- **Front Desk / Reception:** Live room board, guest check-in/out, folio management.
+- **Restaurant POS:** Direct billing to room folios (KOT) or immediate cash/card settlements.
+- **HR & Payroll:** Employee management and automated payroll runs.
+- **Accounts:** Expense tracking, vendor management, and unified financial reporting.
+- **Admin & Settings:** Property management, tax configuration (GST), and Role-Based Access Control (RBAC).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Tech Stack
+- **Frontend:** React 19, TypeScript, Vite 8
+- **Styling:** Tailwind CSS v4, shadcn/ui
+- **State Management:** Zustand (Auth), TanStack Query (Data Fetching)
+- **Backend (BaaS):** Firebase (Auth, Firestore, Cloud Functions, Hosting)
+- **CI/CD:** GitHub Actions (Automated deployments to Firebase Hosting)
 
-## React Compiler
+## 🚀 Getting Started (Local Development)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
+- Node.js (v20+)
+- Firebase CLI (`npm install -g firebase-tools`)
 
-## Expanding the Oxlint configuration
+### Setup
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/assisthealth12/HGSRT-Accounts.git
+   cd "Hotel GSR"
+   ```
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+   *(If prompted, also install function dependencies: `cd functions && npm install`)*
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+3. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+   Access the application at `http://localhost:5173`.
+
+## ☁️ Deployment (Firebase)
+
+This project uses **GitHub Actions** for CI/CD. Any push or merged pull request to the `main` branch will automatically trigger a build and deployment to Firebase Hosting.
+
+Manual deployment can be done via:
+```bash
+npm run build
+firebase deploy --only hosting
 ```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
