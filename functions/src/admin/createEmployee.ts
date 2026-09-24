@@ -27,20 +27,39 @@ export const createEmployee = onCall(async (request) => {
   try {
     let authUserId: string | null = null;
 
-    // 1. If email and password are provided, create the Firebase Auth User
+    // 1. If email and password are provided, create or update the Firebase Auth User
     if (employeeData.email && employeeData.password) {
-      const userRecord = await admin.auth().createUser({
-        email: employeeData.email,
-        password: employeeData.password,
-        displayName: `${employeeData.firstName} ${employeeData.lastName}`,
-      });
-      authUserId = userRecord.uid;
+      try {
+        const userRecord = await admin.auth().createUser({
+          email: employeeData.email,
+          password: employeeData.password,
+          displayName: `${employeeData.firstName} ${employeeData.lastName}`,
+        });
+        authUserId = userRecord.uid;
+      } catch (authError: any) {
+        if (authError.code === 'auth/email-already-exists') {
+          // If the user already exists (e.g. manually created first admin), just fetch them
+          const existingUser = await admin.auth().getUserByEmail(employeeData.email);
+          
+          // Optionally update their password if they provided it here
+          await admin.auth().updateUser(existingUser.uid, {
+            password: employeeData.password,
+            displayName: `${employeeData.firstName} ${employeeData.lastName}`
+          });
+          
+          authUserId = existingUser.uid;
+        } else {
+          throw authError; // Re-throw other auth errors
+        }
+      }
 
       // Set Custom Claims for Role-Based Access Control (RBAC)
-      await admin.auth().setCustomUserClaims(userRecord.uid, {
-        role: employeeData.role,
-        propertyId: propertyId
-      });
+      if (authUserId) {
+        await admin.auth().setCustomUserClaims(authUserId, {
+          role: employeeData.role,
+          propertyId: propertyId
+        });
+      }
     }
 
     // 2. Remove password from the data before saving to Firestore
