@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table/DataTable';
@@ -9,78 +9,11 @@ import { Charge } from '@/domain/charge';
 import { Payment } from '@/domain/payment';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-// Mock data
-const mockStay = {
-  id: 's1',
-  roomNumber: '101',
-  guestName: 'John Doe',
-  checkIn: '2026-09-24',
-  checkOut: '2026-09-26',
-  status: 'In-House',
-};
-
-const mockCharges: Charge[] = [
-  {
-    id: 'chg1',
-    propertyId: 'hotel-001',
-    stayId: 's1',
-    businessDate: '2026-09-24',
-    type: 'Room',
-    description: 'Room Rent - Night 1',
-    baseAmount: 250000,
-    discount: 0,
-    taxableAmount: 250000,
-    taxRatePercent: 12,
-    taxAmount: { totalTax: 30000, cgst: 15000, sgst: 15000, igst: 0 },
-    totalAmount: 280000, // ₹2800
-    isVoided: false,
-    createdAt: Date.now(),
-    createdBy: 'night-audit',
-    updatedAt: Date.now(),
-    updatedBy: 'night-audit',
-  },
-  {
-    id: 'chg2',
-    propertyId: 'hotel-001',
-    stayId: 's1',
-    businessDate: '2026-09-24',
-    type: 'Restaurant',
-    description: 'Dinner - Table 4',
-    baseAmount: 85000,
-    discount: 0,
-    taxableAmount: 85000,
-    taxRatePercent: 5,
-    taxAmount: { totalTax: 4250, cgst: 2125, sgst: 2125, igst: 0 },
-    totalAmount: 89250, // ₹892.50
-    isVoided: false,
-    createdAt: Date.now(),
-    createdBy: 'pos-user',
-    updatedAt: Date.now(),
-    updatedBy: 'pos-user',
-  }
-];
-
-const mockPayments: Payment[] = [
-  {
-    id: 'pay1',
-    propertyId: 'hotel-001',
-    receiptNumber: 'RCPT-001',
-    customerId: 'c1',
-    amount: 1000000, // ₹10,000 Advance
-    paymentDate: '2026-09-24',
-    paymentMode: 'Card',
-    referenceNumber: 'TXN123456',
-    allocatedAmount: 0,
-    unallocatedAmount: 1000000,
-    status: 'Received',
-    isReversed: false,
-    createdAt: Date.now(),
-    createdBy: 'admin',
-    updatedAt: Date.now(),
-    updatedBy: 'admin',
-  }
-];
+import { useStay } from '@/hooks/useStay';
+import { useCharges } from '@/hooks/useCharges';
+import { usePayments } from '@/hooks/usePayments';
+import { useRooms } from '@/hooks/useRooms';
+import { totalCharges as sumCharges, totalPayments as sumPayments } from '@/domain/folio';
 
 const chargeColumns: ColumnDef<Charge>[] = [
   {
@@ -128,12 +61,35 @@ const paymentColumns: ColumnDef<Payment>[] = [
 ];
 
 export function FolioView() {
+  const { stayId } = useParams<{ stayId: string }>();
   const navigate = useNavigate();
 
-  // Aggregate calculations
-  const totalCharges = mockCharges.reduce((acc, curr) => acc + (!curr.isVoided ? curr.totalAmount : 0), 0);
-  const totalPayments = mockPayments.reduce((acc, curr) => acc + (!curr.isReversed ? curr.amount : 0), 0);
-  const balance = totalCharges - totalPayments; // Positive means guest owes money, negative means we owe guest
+  const { data: stay, isLoading: isLoadingStay } = useStay(stayId);
+  const { data: charges = [], isLoading: isLoadingCharges } = useCharges(stayId);
+  const { data: payments = [], isLoading: isLoadingPayments } = usePayments(stay?.customerId);
+  const { data: rooms = [] } = useRooms();
+
+  const isLoading = isLoadingStay || isLoadingCharges || isLoadingPayments;
+
+  if (isLoading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading folio...</div>;
+  }
+
+  if (!stay) {
+    return (
+      <div className="space-y-4">
+        <Button variant="outline" onClick={() => navigate('/stays')}>Back to Stays</Button>
+        <div className="py-12 text-center text-muted-foreground">Stay not found.</div>
+      </div>
+    );
+  }
+
+  const roomNumber = rooms.find(r => r.id === stay.roomAssignments[0]?.roomId)?.roomNumber || 'N/A';
+  const guestName = stay.guests[0]?.name || 'Unknown Guest';
+
+  const totalChargesAmount = sumCharges(charges);
+  const totalPaymentsAmount = sumPayments(payments);
+  const balance = totalChargesAmount - totalPaymentsAmount;
 
   return (
     <div className="space-y-6">
@@ -141,8 +97,8 @@ export function FolioView() {
         <div className="flex items-center space-x-4">
           <Button variant="outline" onClick={() => navigate('/stays')}>Back to Stays</Button>
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Stay Folio: {mockStay.roomNumber}</h2>
-            <p className="text-muted-foreground">Guest: {mockStay.guestName} | {mockStay.checkIn} to {mockStay.checkOut}</p>
+            <h2 className="text-2xl font-bold tracking-tight">Stay Folio: {roomNumber}</h2>
+            <p className="text-muted-foreground">Guest: {guestName} | {stay.checkInDate} to {stay.expectedCheckOutDate}</p>
           </div>
         </div>
         <div className="space-x-2">
@@ -156,13 +112,13 @@ export function FolioView() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Charges</CardDescription>
-            <CardTitle className="text-2xl">{formatINR(totalCharges)}</CardTitle>
+            <CardTitle className="text-2xl">{formatINR(totalChargesAmount)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Payments / Advances</CardDescription>
-            <CardTitle className="text-2xl text-success">{formatINR(totalPayments)}</CardTitle>
+            <CardTitle className="text-2xl text-success">{formatINR(totalPaymentsAmount)}</CardTitle>
           </CardHeader>
         </Card>
         <Card className={balance > 0 ? 'border-destructive' : 'border-success'}>
@@ -186,10 +142,10 @@ export function FolioView() {
               <TabsTrigger value="payments">Payments</TabsTrigger>
             </TabsList>
             <TabsContent value="charges">
-              <DataTable columns={chargeColumns} data={mockCharges} />
+              <DataTable columns={chargeColumns} data={charges} />
             </TabsContent>
             <TabsContent value="payments">
-              <DataTable columns={paymentColumns} data={mockPayments} />
+              <DataTable columns={paymentColumns} data={payments} />
             </TabsContent>
           </Tabs>
         </CardContent>

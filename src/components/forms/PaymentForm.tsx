@@ -26,17 +26,18 @@ type PaymentFormValues = z.infer<typeof paymentSchema>;
 interface PaymentFormProps {
   initialData?: Partial<PaymentFormValues>;
   customers: { id: string; name: string }[];
+  paymentModes: { id: string; name: string }[];
   onSubmit: (data: PaymentFormValues) => void;
   isLoading?: boolean;
 }
 
-export function PaymentForm({ initialData, customers, onSubmit, isLoading }: PaymentFormProps) {
+export function PaymentForm({ initialData, customers, paymentModes, onSubmit, isLoading }: PaymentFormProps) {
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       customerId: '',
       amount: 0,
-      paymentMode: 'Cash',
+      paymentMode: paymentModes[0]?.name ?? '',
       referenceNumber: '',
       bankName: '',
       notes: '',
@@ -98,13 +99,9 @@ export function PaymentForm({ initialData, customers, onSubmit, isLoading }: Pay
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                    <SelectItem value="Card">Card</SelectItem>
-                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="Cheque">Cheque</SelectItem>
-                    <SelectItem value="OTA Payout">OTA Payout</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {paymentModes.map(mode => (
+                      <SelectItem key={mode.id} value={mode.name}>{mode.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />

@@ -2,28 +2,26 @@ import { useQuery } from '@tanstack/react-query';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
-import { Room } from '@/domain/room';
-import { excludeSoftDeleted } from '@/domain/audit';
+import { Expense } from '@/domain/expense';
 
-export function useRooms() {
+export function useExpenses() {
   const propertyId = useAuthStore((state) => state.propertyId);
 
   return useQuery({
-    queryKey: ['rooms', propertyId],
+    queryKey: ['expenses', propertyId],
     queryFn: async () => {
       if (!propertyId) return [];
 
       const q = query(
-        collection(db, 'rooms'),
+        collection(db, 'expenses'),
         where('propertyId', '==', propertyId)
       );
 
       const snapshot = await getDocs(q);
-      const rooms = snapshot.docs.map(doc => ({
+      return snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as Room[];
-      return excludeSoftDeleted(rooms);
+      })) as Expense[];
     },
     enabled: !!propertyId,
   });

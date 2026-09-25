@@ -5,6 +5,8 @@ export interface BaseDocument {
   createdBy: string; // User ID
   updatedAt: number;
   updatedBy: string;
+  deletedAt?: number; // Soft-delete marker — set instead of physically removing the doc
+  deletedBy?: string;
 }
 
 export type CustomFields = Record<string, any>;

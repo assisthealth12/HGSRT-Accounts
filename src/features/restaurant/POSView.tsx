@@ -3,29 +3,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR } from '@/domain/money';
 import { Coffee, UtensilsCrossed, MonitorPlay } from 'lucide-react';
-
-const mockMenu = [
-  { id: 'm1', name: 'Paneer Butter Masala', price: 25000, category: 'Main Course' }, // ₹250
-  { id: 'm2', name: 'Garlic Naan', price: 4000, category: 'Breads' }, // ₹40
-  { id: 'm3', name: 'Masala Dosa', price: 12000, category: 'South Indian' }, // ₹120
-  { id: 'm4', name: 'Filter Coffee', price: 3000, category: 'Beverages' }, // ₹30
-];
-
-const mockTables = [
-  { id: 't1', tableNumber: 'T1', status: 'Available' },
-  { id: 't2', tableNumber: 'T2', status: 'Occupied' },
-  { id: 't3', tableNumber: 'T3', status: 'Occupied' },
-  { id: 't4', tableNumber: 'T4', status: 'Available' },
-];
+import { useMenuItems } from '@/hooks/useMenuItems';
+import { useRestaurantTables } from '@/hooks/useRestaurantTables';
+import { useAuthStore } from '@/store/authStore';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
+import { useQueryClient } from '@tanstack/react-query';
+import { MenuItem, RestaurantTable } from '@/domain/restaurant';
 
 export function POSView() {
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [currentOrder, setCurrentOrder] = useState<{menuItem: any, quantity: number}[]>([]);
+  const propertyId = useAuthStore((state) => state.propertyId);
+  const queryClient = useQueryClient();
 
-  const addToOrder = (item: any) => {
+  const { data: menu = [], isLoading: isLoadingMenu } = useMenuItems();
+  const { data: tables = [], isLoading: isLoadingTables } = useRestaurantTables();
+
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [currentOrder, setCurrentOrder] = useState<{ menuItem: MenuItem; quantity: number }[]>([]);
+  const [isPunching, setIsPunching] = useState(false);
+
+  const addToOrder = (item: MenuItem) => {
     setCurrentOrder(prev => {
       const existing = prev.find(i => i.menuItem.id === item.id);
       if (existing) {
@@ -47,11 +47,30 @@ export function POSView() {
 
   const totalAmount = currentOrder.reduce((acc, item) => acc + (item.menuItem.price * item.quantity), 0);
 
-  const handlePunchKOT = () => {
-    console.log('Punching KOT for table', selectedTable, currentOrder);
-    // TODO: Call cloud function to create KOT and append to Order
-    setCurrentOrder([]);
+  const handlePunchKOT = async () => {
+    if (!propertyId || !selectedTable || currentOrder.length === 0) return;
+
+    setIsPunching(true);
+    try {
+      const punchKOT = httpsCallable(functions, 'punchKOT');
+      await punchKOT({
+        propertyId,
+        tableId: selectedTable,
+        items: currentOrder,
+      });
+      queryClient.invalidateQueries({ queryKey: ['restaurantTables', propertyId] });
+      setCurrentOrder([]);
+    } catch (error) {
+      console.error('Punch KOT failed:', error);
+    } finally {
+      setIsPunching(false);
+    }
   };
+
+  const getTableStyle = (table: RestaurantTable) =>
+    table.status === 'Occupied' && selectedTable !== table.id
+      ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-300'
+      : '';
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col md:flex-row gap-6">
@@ -65,18 +84,24 @@ export function POSView() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-3">
-              {mockTables.map(table => (
-                <Button 
-                  key={table.id}
-                  variant={selectedTable === table.id ? "default" : (table.status === 'Occupied' ? 'secondary' : 'outline')}
-                  className={`w-20 h-20 text-lg font-bold ${table.status === 'Occupied' && selectedTable !== table.id ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-300' : ''}`}
-                  onClick={() => setSelectedTable(table.id)}
-                >
-                  {table.tableNumber}
-                </Button>
-              ))}
-            </div>
+            {isLoadingTables ? (
+              <div className="text-muted-foreground text-sm">Loading tables...</div>
+            ) : tables.length === 0 ? (
+              <div className="text-muted-foreground text-sm">No restaurant tables configured yet.</div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {tables.map(table => (
+                  <Button
+                    key={table.id}
+                    variant={selectedTable === table.id ? "default" : (table.status === 'Occupied' ? 'secondary' : 'outline')}
+                    className={`w-20 h-20 text-lg font-bold ${getTableStyle(table)}`}
+                    onClick={() => setSelectedTable(table.id)}
+                  >
+                    {table.tableNumber}
+                  </Button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -86,29 +111,33 @@ export function POSView() {
             <Tabs defaultValue="all" className="w-full">
               <TabsList>
                 <TabsTrigger value="all">All Items</TabsTrigger>
-                <TabsTrigger value="main">Main Course</TabsTrigger>
-                <TabsTrigger value="beverages">Beverages</TabsTrigger>
               </TabsList>
             </Tabs>
           </CardHeader>
           <ScrollArea className="flex-1 p-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {mockMenu.map(item => (
-                <Card 
-                  key={item.id} 
-                  className="cursor-pointer hover:border-primary transition-colors flex flex-col"
-                  onClick={() => addToOrder(item)}
-                >
-                  <CardContent className="p-4 flex-1 flex flex-col justify-between h-32">
-                    <div className="font-semibold text-sm line-clamp-2">{item.name}</div>
-                    <div className="mt-2 flex justify-between items-center">
-                      <span className="text-muted-foreground text-xs">{item.category}</span>
-                      <span className="font-bold text-primary">{formatINR(item.price)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            {isLoadingMenu ? (
+              <div className="text-muted-foreground text-sm">Loading menu...</div>
+            ) : menu.length === 0 ? (
+              <div className="text-muted-foreground text-sm">No menu items configured yet.</div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {menu.map(item => (
+                  <Card
+                    key={item.id}
+                    className="cursor-pointer hover:border-primary transition-colors flex flex-col"
+                    onClick={() => addToOrder(item)}
+                  >
+                    <CardContent className="p-4 flex-1 flex flex-col justify-between h-32">
+                      <div className="font-semibold text-sm line-clamp-2">{item.name}</div>
+                      <div className="mt-2 flex justify-between items-center">
+                        <span className="text-muted-foreground text-xs">{item.categoryId}</span>
+                        <span className="font-bold text-primary">{formatINR(item.price)}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </ScrollArea>
         </Card>
       </div>
@@ -118,10 +147,10 @@ export function POSView() {
         <CardHeader className="bg-muted/50 border-b pb-4">
           <CardTitle className="flex justify-between items-center">
             <span>Current Ticket</span>
-            {selectedTable && <Badge variant="default" className="text-sm">Table {mockTables.find(t=>t.id===selectedTable)?.tableNumber}</Badge>}
+            {selectedTable && <Badge variant="default" className="text-sm">Table {tables.find(t => t.id === selectedTable)?.tableNumber}</Badge>}
           </CardTitle>
         </CardHeader>
-        
+
         <ScrollArea className="flex-1 p-4">
           {currentOrder.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-2 py-10">
@@ -155,20 +184,20 @@ export function POSView() {
             <span>{formatINR(totalAmount)}</span>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Button 
-              variant="outline" 
-              className="w-full" 
+            <Button
+              variant="outline"
+              className="w-full"
               disabled={currentOrder.length === 0 || !selectedTable}
               onClick={() => setCurrentOrder([])}
             >
               Clear
             </Button>
-            <Button 
-              className="w-full font-bold" 
-              disabled={currentOrder.length === 0 || !selectedTable}
+            <Button
+              className="w-full font-bold"
+              disabled={currentOrder.length === 0 || !selectedTable || isPunching}
               onClick={handlePunchKOT}
             >
-              Punch KOT
+              {isPunching ? 'Punching...' : 'Punch KOT'}
             </Button>
           </div>
           <Button variant="secondary" className="w-full" disabled={!selectedTable}>

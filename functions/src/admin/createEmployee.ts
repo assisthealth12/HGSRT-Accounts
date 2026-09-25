@@ -14,14 +14,15 @@ export const createEmployee = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'User must be logged in.');
   }
 
-  // Ensure only Admins can create new employees and grant access
-  // if (auth.token.role !== 'Admin') {
-  //  throw new HttpsError('permission-denied', 'Only Admins can create employees.');
-  // }
-
   const { propertyId, employeeData } = data;
   if (!propertyId || !employeeData) {
     throw new HttpsError('invalid-argument', 'Missing propertyId or employeeData');
+  }
+
+  // Only Admins can grant a system login (assign a role). Anyone authenticated
+  // for the property can still add a plain employee record with no login.
+  if (employeeData.role && auth.token.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Only Admins can grant system access.');
   }
 
   try {
@@ -54,7 +55,7 @@ export const createEmployee = onCall(async (request) => {
       }
 
       // Set Custom Claims for Role-Based Access Control (RBAC)
-      if (authUserId) {
+      if (authUserId && employeeData.role) {
         await admin.auth().setCustomUserClaims(authUserId, {
           role: employeeData.role,
           propertyId: propertyId
@@ -90,7 +91,7 @@ export const createEmployee = onCall(async (request) => {
       action: 'EMPLOYEE_CREATED',
       entityId: employeeRef.id,
       entityType: 'employee',
-      details: `Created employee ${newEmployee.firstName} ${newEmployee.lastName} (${newEmployee.role})`,
+      details: `Created employee ${newEmployee.firstName} ${newEmployee.lastName}${newEmployee.role ? ` (${newEmployee.role})` : ''}`,
       userId: auth.uid,
       timestamp: Date.now()
     });

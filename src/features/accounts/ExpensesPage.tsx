@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table/DataTable';
 import { Button } from '@/components/ui/button';
@@ -7,43 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR } from '@/domain/money';
 import { Expense } from '@/domain/expense';
-
-const mockExpenses: Expense[] = [
-  {
-    id: 'exp1',
-    propertyId: 'hotel-001',
-    category: 'Groceries',
-    invoiceNumber: 'INV-2026-991',
-    invoiceDate: '2026-09-23',
-    items: [{ description: 'Milk & Bread', amount: 50000, totalAmount: 50000 }],
-    subtotal: 50000,
-    taxTotal: { totalTax: 0, cgst: 0, sgst: 0, igst: 0 },
-    grandTotal: 50000,
-    status: 'Pending Approval',
-    isVoided: false,
-    createdAt: Date.now(),
-    createdBy: 'user',
-    updatedAt: Date.now(),
-    updatedBy: 'user',
-  },
-  {
-    id: 'exp2',
-    propertyId: 'hotel-001',
-    category: 'Maintenance',
-    invoiceNumber: 'MAINT-04',
-    invoiceDate: '2026-09-20',
-    items: [{ description: 'AC Repair Room 102', amount: 150000, totalAmount: 150000 }],
-    subtotal: 150000,
-    taxTotal: { totalTax: 0, cgst: 0, sgst: 0, igst: 0 },
-    grandTotal: 150000,
-    status: 'Paid',
-    isVoided: false,
-    createdAt: Date.now(),
-    createdBy: 'user',
-    updatedAt: Date.now(),
-    updatedBy: 'user',
-  }
-];
+import { useExpenses } from '@/hooks/useExpenses';
 
 const expenseColumns: ColumnDef<Expense>[] = [
   {
@@ -78,19 +42,33 @@ const expenseColumns: ColumnDef<Expense>[] = [
       if (status === 'Pending Approval') variant = 'destructive';
       if (status === 'Approved') variant = 'secondary';
       if (status === 'Paid') variant = 'default';
-      
+
       return <Badge variant={variant}>{status}</Badge>;
     },
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => (
-      <Button variant="outline" size="sm">View</Button>
-    ),
   },
 ];
 
 export function ExpensesPage() {
+  const { data: expenses = [], isLoading } = useExpenses();
+
+  const now = new Date();
+  const thisMonth = expenses.filter(e => {
+    const d = new Date(e.invoiceDate);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+
+  const pendingApprovalTotal = expenses
+    .filter(e => e.status === 'Pending Approval')
+    .reduce((acc, e) => acc + e.grandTotal, 0);
+
+  const approvedUnpaidTotal = expenses
+    .filter(e => e.status === 'Approved')
+    .reduce((acc, e) => acc + e.grandTotal, 0);
+
+  const paidThisMonthTotal = thisMonth
+    .filter(e => e.status === 'Paid')
+    .reduce((acc, e) => acc + e.grandTotal, 0);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -107,19 +85,19 @@ export function ExpensesPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-muted-foreground text-sm font-medium">Pending Approvals</CardTitle>
-            <div className="text-2xl font-bold text-destructive">{formatINR(50000)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatINR(pendingApprovalTotal)}</div>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-muted-foreground text-sm font-medium">Approved (Unpaid)</CardTitle>
-            <div className="text-2xl font-bold">{formatINR(0)}</div>
+            <div className="text-2xl font-bold">{formatINR(approvedUnpaidTotal)}</div>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-muted-foreground text-sm font-medium">Total Paid (This Month)</CardTitle>
-            <div className="text-2xl font-bold text-success">{formatINR(150000)}</div>
+            <div className="text-2xl font-bold text-success">{formatINR(paidThisMonthTotal)}</div>
           </CardHeader>
         </Card>
       </div>
@@ -129,21 +107,30 @@ export function ExpensesPage() {
           <CardTitle>Expense Ledger</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all">
-            <TabsList className="mb-4">
-              <TabsTrigger value="all">All Expenses</TabsTrigger>
-              <TabsTrigger value="pending">Pending Approval</TabsTrigger>
-              <TabsTrigger value="approved">Approved</TabsTrigger>
-              <TabsTrigger value="paid">Paid</TabsTrigger>
-            </TabsList>
-            <TabsContent value="all">
-              <DataTable columns={expenseColumns} data={mockExpenses} />
-            </TabsContent>
-            {/* Other tab contents would filter the data appropriately */}
-            <TabsContent value="pending">
-              <DataTable columns={expenseColumns} data={mockExpenses.filter(e => e.status === 'Pending Approval')} />
-            </TabsContent>
-          </Tabs>
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">Loading expenses...</div>
+          ) : (
+            <Tabs defaultValue="all">
+              <TabsList className="mb-4">
+                <TabsTrigger value="all">All Expenses</TabsTrigger>
+                <TabsTrigger value="pending">Pending Approval</TabsTrigger>
+                <TabsTrigger value="approved">Approved</TabsTrigger>
+                <TabsTrigger value="paid">Paid</TabsTrigger>
+              </TabsList>
+              <TabsContent value="all">
+                <DataTable columns={expenseColumns} data={expenses} />
+              </TabsContent>
+              <TabsContent value="pending">
+                <DataTable columns={expenseColumns} data={expenses.filter(e => e.status === 'Pending Approval')} />
+              </TabsContent>
+              <TabsContent value="approved">
+                <DataTable columns={expenseColumns} data={expenses.filter(e => e.status === 'Approved')} />
+              </TabsContent>
+              <TabsContent value="paid">
+                <DataTable columns={expenseColumns} data={expenses.filter(e => e.status === 'Paid')} />
+              </TabsContent>
+            </Tabs>
+          )}
         </CardContent>
       </Card>
     </div>

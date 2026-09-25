@@ -38,7 +38,7 @@ export function EmployeeForm({ initialData, onSubmit, isLoading }: EmployeeFormP
       email: '',
       department: '',
       designation: '',
-      role: 'FrontDesk',
+      role: undefined,
       password: '',
       joiningDate: new Date().toISOString().split('T')[0],
       monthlySalary: 0,
@@ -168,20 +168,16 @@ export function EmployeeForm({ initialData, onSubmit, isLoading }: EmployeeFormP
             name="role"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>System Role</FormLabel>
+                <FormLabel>System Role (leave blank for no login)</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a role" />
+                      <SelectValue placeholder="No system access" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="Manager">Manager</SelectItem>
-                    <SelectItem value="FrontDesk">Front Desk</SelectItem>
-                    <SelectItem value="Housekeeping">Housekeeping</SelectItem>
-                    <SelectItem value="Restaurant">Restaurant</SelectItem>
-                    <SelectItem value="Accountant">Accountant</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />

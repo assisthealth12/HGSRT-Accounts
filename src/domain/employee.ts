@@ -1,5 +1,6 @@
 import { BaseDocument, CustomFields } from './base';
 import { Money } from './money';
+import { UserRole } from './user';
 
 export interface Employee extends BaseDocument {
   employeeCode: string;
@@ -14,4 +15,6 @@ export interface Employee extends BaseDocument {
   monthlySalary: Money;
   active: boolean;
   customFields?: CustomFields;
+  role?: UserRole; // Only set when this employee has a system login
+  hasSystemAccess?: boolean;
 }

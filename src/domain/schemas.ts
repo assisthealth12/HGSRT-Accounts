@@ -50,7 +50,7 @@ export const employeeSchema = z.object({
   joiningDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
   leavingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
   monthlySalary: moneySchema,
-  role: z.enum(['Admin', 'Manager', 'FrontDesk', 'Housekeeping', 'Restaurant', 'Accountant']).default('FrontDesk'),
+  role: z.enum(['admin', 'manager']).optional(),
   active: z.boolean().default(true),
   customFields: z.record(z.any()).optional(),
 });
@@ -113,7 +113,7 @@ export const staySchema = z.object({
 export const paymentSchema = z.object({
   customerId: z.string().min(1, 'Customer is required'),
   amount: moneySchema,
-  paymentMode: z.enum(['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque', 'OTA Payout', 'Other']),
+  paymentMode: z.string().min(1, 'Payment mode is required'),
   referenceNumber: z.string().optional(),
   bankName: z.string().optional(),
   notes: z.string().optional(),

@@ -1,6 +1,6 @@
 import { BaseDocument } from './base';
 
-export type UserRole = 'admin' | 'front_desk' | 'accounts' | 'restaurant';
+export type UserRole = 'admin' | 'manager';
 
 export interface AppUser extends BaseDocument {
   uid: string; // Firebase Auth UID

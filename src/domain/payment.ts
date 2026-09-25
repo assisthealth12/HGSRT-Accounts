@@ -1,7 +1,9 @@
 import { BaseDocument } from './base';
 import { Money } from './money';
 
-export type PaymentMode = 'Cash' | 'UPI' | 'Card' | 'Bank Transfer' | 'Cheque' | 'OTA Payout' | 'Other';
+// Historically a fixed union; now sourced from the admin-editable `paymentModes`
+// collection (see usePaymentModes), so any non-empty name the admin has added is valid.
+export type PaymentMode = string;
 export type PaymentStatus = 'Received' | 'Reversed';
 
 export interface Payment extends BaseDocument {

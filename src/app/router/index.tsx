@@ -4,17 +4,23 @@ import { CustomersPage } from '@/features/customers/CustomersPage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { EmployeesPage } from '@/features/employees/EmployeesPage';
 import { SettingsPage } from '@/features/admin/SettingsPage';
+import { TeamPage } from '@/features/admin/TeamPage';
+import { AuditLogPage } from '@/features/admin/AuditLogPage';
 import { StaysPage } from '@/features/stays/StaysPage';
 import { RoomBoard } from '@/features/stays/RoomBoard';
 import { FolioView } from '@/features/stays/FolioView';
+import { PendingDuesPage } from '@/features/stays/PendingDuesPage';
 import { POSView } from '@/features/restaurant/POSView';
+import { BanquetPage } from '@/features/restaurant/BanquetPage';
 import { ExpensesPage } from '@/features/accounts/ExpensesPage';
 import { PayrollPage } from '@/features/hr/PayrollPage';
+import { AttendancePage } from '@/features/hr/AttendancePage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AuthLayout } from '../layouts/AuthLayout';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { AdminRoute } from '@/components/auth/AdminRoute';
 
 export const router = createBrowserRouter([
   {
@@ -41,12 +47,20 @@ export const router = createBrowserRouter([
         element: <POSView />,
       },
       {
+        path: 'banquet',
+        element: <BanquetPage />,
+      },
+      {
         path: 'stays',
         element: <StaysPage />,
       },
       {
         path: 'stays/:stayId',
         element: <FolioView />,
+      },
+      {
+        path: 'pending-dues',
+        element: <PendingDuesPage />,
       },
       {
         path: 'room-board',
@@ -63,6 +77,26 @@ export const router = createBrowserRouter([
       {
         path: 'employees',
         element: <EmployeesPage />,
+      },
+      {
+        path: 'attendance',
+        element: <AttendancePage />,
+      },
+      {
+        path: 'team',
+        element: (
+          <AdminRoute>
+            <TeamPage />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: 'audit-log',
+        element: (
+          <AdminRoute>
+            <AuditLogPage />
+          </AdminRoute>
+        ),
       },
       {
         path: 'settings',

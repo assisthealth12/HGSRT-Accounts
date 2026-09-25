@@ -1,11 +1,34 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, BedDouble, UtensilsCrossed, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useStays } from '@/hooks/useStays';
+import { useActiveStays } from '@/hooks/useActiveStays';
+import { useRestaurantTables } from '@/hooks/useRestaurantTables';
+import { useKots } from '@/hooks/useKots';
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function DashboardPage() {
   const navigate = useNavigate();
+
+  const { data: stays = [] } = useStays();
+  const { data: activeStays = [] } = useActiveStays();
+  const { data: tables = [] } = useRestaurantTables();
+  const { data: kots = [] } = useKots();
+
+  const today = todayISO();
+  const arrivals = stays.filter(s => s.checkInDate === today && s.status !== 'Cancelled').length;
+  const departures = stays.filter(s => s.expectedCheckOutDate === today && s.status === 'In-House').length;
+
+  const occupiedTables = tables.filter(t => t.status === 'Occupied').length;
+  const kotsToday = kots.filter(k => new Date(k.createdAt).toISOString().slice(0, 10) === today).length;
+
+  const inHouseCount = activeStays.filter(s => s.status === 'In-House').length;
+  const reservedCount = activeStays.filter(s => s.status === 'Reserved').length;
 
   return (
     <div className="space-y-6">
@@ -21,8 +44,8 @@ export function DashboardPage() {
             <BedDouble className="w-5 h-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12 Arrivals</div>
-            <p className="text-xs text-muted-foreground mt-1">4 Departures pending</p>
+            <div className="text-2xl font-bold">{arrivals} Arrivals</div>
+            <p className="text-xs text-muted-foreground mt-1">{departures} Departures pending</p>
             <Button variant="link" className="px-0 mt-4 h-auto flex items-center">
               Go to Room Board <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
@@ -35,8 +58,8 @@ export function DashboardPage() {
             <UtensilsCrossed className="w-5 h-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4 Active Tables</div>
-            <p className="text-xs text-muted-foreground mt-1">15 KOTs today</p>
+            <div className="text-2xl font-bold">{occupiedTables} Active Tables</div>
+            <p className="text-xs text-muted-foreground mt-1">{kotsToday} KOTs today</p>
             <Button variant="link" className="px-0 mt-4 h-auto flex items-center">
               Open POS <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
@@ -49,8 +72,8 @@ export function DashboardPage() {
             <Users className="w-5 h-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">45 In-House</div>
-            <p className="text-xs text-muted-foreground mt-1">2 VIPs present</p>
+            <div className="text-2xl font-bold">{inHouseCount} In-House</div>
+            <p className="text-xs text-muted-foreground mt-1">{reservedCount} Reserved</p>
             <Button variant="link" className="px-0 mt-4 h-auto flex items-center">
               View Directory <ArrowRight className="w-4 h-4 ml-2" />
             </Button>

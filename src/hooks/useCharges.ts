@@ -2,28 +2,26 @@ import { useQuery } from '@tanstack/react-query';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
-import { Room } from '@/domain/room';
-import { excludeSoftDeleted } from '@/domain/audit';
+import { Charge } from '@/domain/charge';
 
-export function useRooms() {
+export function useCharges(stayId?: string) {
   const propertyId = useAuthStore((state) => state.propertyId);
 
   return useQuery({
-    queryKey: ['rooms', propertyId],
+    queryKey: ['charges', stayId ?? 'all', propertyId],
     queryFn: async () => {
       if (!propertyId) return [];
 
-      const q = query(
-        collection(db, 'rooms'),
-        where('propertyId', '==', propertyId)
-      );
+      const clauses = [where('propertyId', '==', propertyId)];
+      if (stayId) clauses.push(where('stayId', '==', stayId));
+
+      const q = query(collection(db, 'charges'), ...clauses);
 
       const snapshot = await getDocs(q);
-      const rooms = snapshot.docs.map(doc => ({
+      return snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as Room[];
-      return excludeSoftDeleted(rooms);
+      })) as Charge[];
     },
     enabled: !!propertyId,
   });

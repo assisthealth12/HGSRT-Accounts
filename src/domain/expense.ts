@@ -2,7 +2,9 @@ import { BaseDocument } from './base';
 import { Money } from './money';
 import { TaxAmount } from './gst';
 
-export type ExpenseCategory = 'Maintenance' | 'Groceries' | 'Utilities' | 'Marketing' | 'Supplies' | 'Other';
+// Historically a fixed union; now sourced from the admin-editable `expenseCategories`
+// collection (see useExpenseCategories), so any name the admin has added is valid.
+export type ExpenseCategory = string;
 export type ExpenseStatus = 'Pending Approval' | 'Approved' | 'Paid' | 'Rejected';
 
 export interface ExpenseItem {

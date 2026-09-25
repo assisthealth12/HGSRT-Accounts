@@ -2,82 +2,80 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // --- HELPER FUNCTIONS ---
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function getUserRole() {
       return request.auth.token.role;
     }
-    
+
     function isAdmin() {
       return isAuthenticated() && getUserRole() == 'admin';
     }
-    
-    function isFrontDesk() {
-      return isAuthenticated() && (getUserRole() == 'front_desk' || isAdmin());
+
+    // Manager has full operational access, same as Admin, minus admin-only
+    // surfaces (audit log visibility, user/employee role management).
+    function isManager() {
+      return isAuthenticated() && (getUserRole() == 'manager' || isAdmin());
     }
-    
-    function isAccounts() {
-      return isAuthenticated() && (getUserRole() == 'accounts' || isAdmin());
-    }
-    
-    function isRestaurant() {
-      return isAuthenticated() && (getUserRole() == 'restaurant' || isAdmin());
-    }
-    
+
     function isFromProperty(propertyId) {
-      return resource.data.propertyId == propertyId && 
+      return resource.data.propertyId == propertyId &&
              request.auth.token.propertyId == propertyId;
     }
-    
+
     function isCreatingForProperty(propertyId) {
-      return request.resource.data.propertyId == propertyId && 
+      return request.resource.data.propertyId == propertyId &&
              request.auth.token.propertyId == propertyId;
     }
 
     // --- RULES PER COLLECTION ---
 
-    // USERS: Only admins can manage users. Users can read their own profile.
-    match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+    // EMPLOYEES: Any property member can read/manage plain records; granting
+    // a login (role field) is enforced admin-only in the createEmployee Cloud Function.
+    match /employees/{employeeId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
     }
-    
+
     // PROPERTIES: All authenticated users can read their own property. Admin can write.
     match /properties/{propertyId} {
       allow read: if isAuthenticated() && request.auth.token.propertyId == propertyId;
       allow write: if isAdmin() && request.auth.token.propertyId == propertyId;
     }
 
-    // CUSTOMERS: Accessible to Front Desk, Accounts, Admin
+    // CUSTOMERS
     match /customers/{customerId} {
-      allow read: if isAuthenticated() && isFromProperty(resource.data.propertyId);
-      allow create: if (isFrontDesk() || isAccounts()) && isCreatingForProperty(request.resource.data.propertyId);
-      allow update: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
-      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId); // Logical deletion is preferred
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow update: if isManager() && isFromProperty(resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId); // Soft deletion is preferred
     }
 
-    // ROOMS / ROOM TYPES: Front Desk can read, Admin can write
+    // ROOMS / ROOM TYPES
     match /rooms/{roomId} {
-      allow read: if isAuthenticated() && isFromProperty(resource.data.propertyId);
-      allow write: if isAdmin() && isFromProperty(resource.data.propertyId);
-    }
-    
-    match /roomTypes/{typeId} {
-      allow read: if isAuthenticated() && isFromProperty(resource.data.propertyId);
-      allow write: if isAdmin() && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
     }
 
-    // STAYS (Front Desk, Admin)
+    match /roomTypes/{typeId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
+    }
+
+    // STAYS
     match /stays/{stayId} {
-      allow read: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
-      allow create: if isFrontDesk() && isCreatingForProperty(request.resource.data.propertyId);
-      allow update: if isFrontDesk() && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow update: if isManager() && isFromProperty(resource.data.propertyId);
       // Stays should never be physically deleted
-      allow delete: if false; 
+      allow delete: if false;
     }
 
     // -------------------------------------------------------------------------
@@ -85,70 +83,108 @@ service cloud.firestore {
     // Critical Rule: Financial transactions MUST be written via Cloud Functions
     // Clients can only read them.
     // -------------------------------------------------------------------------
-    
+
     match /invoices/{invoiceId} {
-      allow read: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
 
     match /payments/{paymentId} {
-      allow read: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
-    
+
     match /paymentAllocations/{allocationId} {
-      allow read: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
 
     match /charges/{chargeId} {
-      allow read: if (isFrontDesk() || isAccounts()) && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
-    
-    // EXPENSES & VENDORS (Accounts, Admin)
+
+    // EXPENSES & VENDORS
     match /expenses/{expenseId} {
-      allow read: if isAccounts() && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
-    
+
     match /vendors/{vendorId} {
-      allow read: if isAccounts() && isFromProperty(resource.data.propertyId);
-      allow create, update: if isAccounts() && isCreatingForProperty(request.resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
       allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
     }
 
-    // RESTAURANT (Restaurant, Admin, Accounts)
+    // Dynamic lookup lists (payment modes, expense categories) — admin-managed
+    // but readable by any manager so forms can populate their dropdowns.
+    match /paymentModes/{modeId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow write: if isAdmin() && isCreatingForProperty(request.resource.data.propertyId);
+    }
+
+    match /expenseCategories/{categoryId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow write: if isAdmin() && isCreatingForProperty(request.resource.data.propertyId);
+    }
+
+    // RESTAURANT
     match /restaurantOrders/{orderId} {
-      allow read: if (isRestaurant() || isAccounts()) && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions for financial integrity
     }
 
-    // PAYROLL & ATTENDANCE (Admin, Accounts)
+    match /kots/{kotId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow write: if false; // Only Cloud Functions
+    }
+
+    match /restaurantTables/{tableId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
+    }
+
+    match /menuItems/{itemId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
+    }
+
+    // BANQUET SALES
+    match /banquetSales/{saleId} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
+    }
+
+    // PAYROLL & ATTENDANCE
     match /payrollRuns/{runId} {
-      allow read: if isAccounts() && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow write: if false; // Only Cloud Functions
     }
 
     match /attendance/{attendanceId} {
-      allow read: if isAccounts() && isFromProperty(resource.data.propertyId);
-      allow write: if isAccounts() && isFromProperty(resource.data.propertyId);
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if false; // Attendance is never deleted, only corrected
     }
 
     // AUDIT LOGS
     // Completely immutable by clients. Read-only by Admins.
     match /auditLogs/{logId} {
       allow read: if isAdmin() && isFromProperty(resource.data.propertyId);
-      allow write: if false;
+      allow create: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow update, delete: if false;
     }
-    
+
     // READ MODELS / SUMMARIES
     // Clients can read to display dashboards, but only Cloud Functions can update them.
     match /dailySummaries/{summaryId} {
       allow read: if isAuthenticated() && isFromProperty(resource.data.propertyId);
-      allow write: if false; 
+      allow write: if false;
     }
-    
+
     match /monthlySummaries/{summaryId} {
       allow read: if isAuthenticated() && isFromProperty(resource.data.propertyId);
       allow write: if false;

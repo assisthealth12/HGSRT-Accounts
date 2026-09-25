@@ -10,106 +10,84 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
-// Define columns for the table
-const columns: ColumnDef<Room>[] = [
-  {
-    accessorKey: 'roomNumber',
-    header: 'Room',
-  },
-  {
-    accessorKey: 'roomTypeId', // Ideally mapped to name via relationships
-    header: 'Type',
-  },
-  {
-    accessorKey: 'floor',
-    header: 'Floor',
-    cell: ({ row }) => row.original.floor || '-',
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => {
-      const status = row.original.status;
-      // Simple coloring logic based on status
-      let colorClass = 'text-foreground';
-      if (status === 'Available') colorClass = 'text-success';
-      if (status === 'Occupied') colorClass = 'text-primary';
-      if (status === 'Dirty') colorClass = 'text-warning';
-      if (status === 'Maintenance' || status === 'Blocked') colorClass = 'text-destructive';
-
-      return <span className={`font-medium ${colorClass}`}>{status}</span>;
-    },
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => {
-      const room = row.original;
-      return (
-        <Button variant="outline" size="sm" onClick={() => console.log('Edit Room', room.id)}>
-          Edit
-        </Button>
-      );
-    },
-  },
-];
-
-// Mock data until Firebase is wired up
-const mockRooms: Room[] = [
-  {
-    id: 'r1',
-    propertyId: 'hotel-001',
-    roomNumber: '101',
-    roomTypeId: 'type-1',
-    floor: '1st Floor',
-    status: 'Available',
-    active: true,
-    createdAt: Date.now(),
-    createdBy: 'admin',
-    updatedAt: Date.now(),
-    updatedBy: 'admin',
-  },
-  {
-    id: 'r2',
-    propertyId: 'hotel-001',
-    roomNumber: '102',
-    roomTypeId: 'type-2',
-    floor: '1st Floor',
-    status: 'Occupied',
-    active: true,
-    createdAt: Date.now(),
-    createdBy: 'admin',
-    updatedAt: Date.now(),
-    updatedBy: 'admin',
-  },
-  {
-    id: 'r3',
-    propertyId: 'hotel-001',
-    roomNumber: '201',
-    roomTypeId: 'type-1',
-    floor: '2nd Floor',
-    status: 'Dirty',
-    active: true,
-    createdAt: Date.now(),
-    createdBy: 'admin',
-    updatedAt: Date.now(),
-    updatedBy: 'admin',
-  }
-];
-
-// Mock Room Types
-const mockRoomTypes = [
-  { id: 'type-1', name: 'Standard' },
-  { id: 'type-2', name: 'Executive' },
-];
+import { useRooms } from '@/hooks/useRooms';
+import { useRoomTypes } from '@/hooks/useRoomTypes';
+import { useCreateRoom, useUpdateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
+import { useAuthStore } from '@/store/authStore';
 
 export function RoomsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
-  const handleSubmit = (data: any) => {
-    console.log('Room data submitted:', data);
+  const { data: rooms = [], isLoading: isLoadingRooms } = useRooms();
+  const { data: roomTypes = [] } = useRoomTypes();
+  const { mutateAsync: createRoom, isPending: isCreatingRoom } = useCreateRoom();
+  const { mutateAsync: updateRoom, isPending: isUpdatingRoom } = useUpdateRoom();
+  const { mutateAsync: deleteRoom } = useDeleteRoom();
+  const role = useAuthStore((state) => state.role);
+
+  const roomTypeName = (roomTypeId: string) =>
+    roomTypes.find(t => t.id === roomTypeId)?.name || roomTypeId;
+
+  const handleDelete = async (room: Room) => {
+    if (!confirm(`Delete room ${room.roomNumber}? This can be reviewed later in the audit log.`)) return;
+    await deleteRoom(room);
+  };
+
+  const columns: ColumnDef<Room>[] = [
+    {
+      accessorKey: 'roomNumber',
+      header: 'Room',
+    },
+    {
+      accessorKey: 'roomTypeId',
+      header: 'Type',
+      cell: ({ row }) => roomTypeName(row.original.roomTypeId),
+    },
+    {
+      accessorKey: 'floor',
+      header: 'Floor',
+      cell: ({ row }) => row.original.floor || '-',
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => {
+        const status = row.original.status;
+        let colorClass = 'text-foreground';
+        if (status === 'Available') colorClass = 'text-success';
+        if (status === 'Occupied') colorClass = 'text-primary';
+        if (status === 'Dirty') colorClass = 'text-warning';
+        if (status === 'Maintenance' || status === 'Blocked') colorClass = 'text-destructive';
+
+        return <span className={`font-medium ${colorClass}`}>{status}</span>;
+      },
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <div className="space-x-2">
+          <Button variant="outline" size="sm" onClick={() => { setEditingRoom(row.original); setIsDialogOpen(true); }}>
+            Edit
+          </Button>
+          {role === 'admin' && (
+            <Button variant="outline" size="sm" onClick={() => handleDelete(row.original)}>
+              Delete
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const handleSubmit = async (data: any) => {
+    if (editingRoom) {
+      await updateRoom({ id: editingRoom.id, data, previous: editingRoom });
+    } else {
+      await createRoom(data);
+    }
     setIsDialogOpen(false);
-    // TODO: Wire up to TanStack Query mutation -> Firebase
+    setEditingRoom(null);
   };
 
   return (
@@ -121,21 +99,35 @@ export function RoomsPage() {
             Manage your physical rooms and their current statuses.
           </p>
         </div>
-        <Button onClick={() => setIsDialogOpen(true)}>Add Room</Button>
+        <Button onClick={() => { setEditingRoom(null); setIsDialogOpen(true); }}>Add Room</Button>
       </div>
 
-      <DataTable 
-        columns={columns} 
-        data={mockRooms} 
-        searchKey="roomNumber" 
-      />
+      {isLoadingRooms ? (
+        <div className="py-12 text-center text-muted-foreground">Loading rooms...</div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={rooms}
+          searchKey="roomNumber"
+        />
+      )}
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingRoom(null); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add New Room</DialogTitle>
+            <DialogTitle>{editingRoom ? 'Edit Room' : 'Add New Room'}</DialogTitle>
           </DialogHeader>
-          <RoomForm roomTypes={mockRoomTypes} onSubmit={handleSubmit} />
+          {roomTypes.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No room types configured yet. Add room types before creating rooms.
+            </p>
+          )}
+          <RoomForm
+            roomTypes={roomTypes}
+            onSubmit={handleSubmit}
+            isLoading={isCreatingRoom || isUpdatingRoom}
+            initialData={editingRoom ?? undefined}
+          />
         </DialogContent>
       </Dialog>
     </div>
