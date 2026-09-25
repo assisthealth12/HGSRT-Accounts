@@ -23,9 +23,16 @@ export function AppProvider() {
       setUser(user);
 
       if (user) {
-        const tokenResult = await user.getIdTokenResult();
-        setRole((tokenResult.claims.role as any) ?? null);
-        setPropertyId((tokenResult.claims.propertyId as string) ?? null);
+        try {
+          // Force refresh to get latest claims (like role) immediately
+          const tokenResult = await user.getIdTokenResult(true);
+          setRole((tokenResult.claims.role as any) ?? null);
+          setPropertyId((tokenResult.claims.propertyId as string) ?? null);
+        } catch (error) {
+          console.error('Error fetching token claims:', error);
+          setRole(null);
+          setPropertyId(null);
+        }
       } else {
         setRole(null);
         setPropertyId(null);

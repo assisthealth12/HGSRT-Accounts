@@ -85,7 +85,7 @@ export const router = createBrowserRouter([
       {
         path: 'team',
         element: (
-          <AdminRoute>
+          <AdminRoute allowedRoles={['admin', 'manager']}>
             <TeamPage />
           </AdminRoute>
         ),

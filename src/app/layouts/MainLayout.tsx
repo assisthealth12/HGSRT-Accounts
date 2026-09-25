@@ -26,8 +26,10 @@ export function MainLayout() {
     { name: 'Expenses', path: '/expenses', icon: Receipt },
     { name: 'Payroll', path: '/payroll', icon: Banknote },
     { name: 'Settings', path: '/settings', icon: Settings },
-    ...(role === 'admin' ? [
+    ...(role === 'admin' || role === 'manager' ? [
       { name: 'Team & Logins', path: '/team', icon: UserCog },
+    ] : []),
+    ...(role === 'admin' ? [
       { name: 'Audit Log', path: '/audit-log', icon: ShieldCheck },
     ] : []),
   ];
