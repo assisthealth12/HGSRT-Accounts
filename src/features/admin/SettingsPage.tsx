@@ -10,6 +10,8 @@ import { useExpenseCategories, useCreateExpenseCategory, useDeleteExpenseCategor
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useCreateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 function SimpleLookupCard({
   title,
   items,
@@ -36,15 +38,15 @@ function SimpleLookupCard({
       <CardHeader>
         <CardTitle className="text-lg">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
+      <CardContent className="space-y-6">
+        <div className="flex flex-wrap gap-3">
           {items.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
           {items.map(item => (
-            <Badge key={item.id} variant="outline" className="flex items-center gap-2 py-1.5">
+            <Badge key={item.id} variant="secondary" className="flex items-center gap-2 py-1.5 px-4 rounded-full text-sm font-medium">
               {item.name}
               <button
                 type="button"
-                className="text-muted-foreground hover:text-destructive"
+                className="text-muted-foreground hover:text-destructive transition-colors ml-1"
                 onClick={() => onDelete(item)}
                 aria-label={`Remove ${item.name}`}
               >
@@ -53,9 +55,9 @@ function SimpleLookupCard({
             </Badge>
           ))}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-3 items-center max-w-md">
           <Input
-            placeholder="New name"
+            placeholder="Add new..."
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
@@ -93,15 +95,15 @@ function RoomTypesCard() {
       <CardHeader>
         <CardTitle className="text-lg">Room Types</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
+      <CardContent className="space-y-6">
+        <div className="flex flex-wrap gap-3">
           {roomTypes.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
           {roomTypes.map(rt => (
-            <Badge key={rt.id} variant="outline" className="flex items-center gap-2 py-1.5">
+            <Badge key={rt.id} variant="secondary" className="flex items-center gap-2 py-1.5 px-4 rounded-full text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100">
               {rt.name} · {formatINR(rt.baseRate)}
               <button
                 type="button"
-                className="text-muted-foreground hover:text-destructive"
+                className="text-slate-400 hover:text-red-500 transition-colors ml-1"
                 onClick={() => deleteRoomType(rt)}
                 aria-label={`Remove ${rt.name}`}
               >
@@ -110,10 +112,10 @@ function RoomTypesCard() {
             </Badge>
           ))}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-3 items-center max-w-lg">
           <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Base rate (₹)" type="number" value={baseRate} onChange={(e) => setBaseRate(e.target.value)} className="max-w-[160px]" />
-          <Button type="button" onClick={handleAdd} disabled={isPending}>Add</Button>
+          <Input placeholder="Base rate (₹)" type="number" value={baseRate} onChange={(e) => setBaseRate(e.target.value)} className="w-32" />
+          <Button type="button" onClick={handleAdd} disabled={isPending}>Add Type</Button>
         </div>
       </CardContent>
     </Card>
@@ -135,40 +137,60 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-5xl mx-auto">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Property Settings</h2>
-        <p className="text-muted-foreground">
-          Manage your hotel's general information and operational configuration.
+        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">Property Settings</h2>
+        <p className="text-gray-500 mt-1">
+          Manage your hotel's general information, configuration, and operational lists.
         </p>
       </div>
 
-      <PropertySettingsForm onSubmit={handleSubmit} />
+      <Tabs defaultValue="general" className="w-full">
+        <TabsList className="mb-6 bg-gray-100 p-1 rounded-xl">
+          <TabsTrigger value="general" className="rounded-lg px-6">General Info</TabsTrigger>
+          <TabsTrigger value="rooms" className="rounded-lg px-6">Room Types</TabsTrigger>
+          <TabsTrigger value="lookups" className="rounded-lg px-6">System Lists</TabsTrigger>
+        </TabsList>
 
-      <div>
-        <h3 className="text-xl font-semibold tracking-tight mb-1">Lists</h3>
-        <p className="text-muted-foreground text-sm mb-4">
-          Manage the dropdown options used across the app. Removing one only hides it from new entries.
-        </p>
-      </div>
+        <TabsContent value="general" className="mt-0">
+          <PropertySettingsForm onSubmit={handleSubmit} />
+        </TabsContent>
 
-      <RoomTypesCard />
+        <TabsContent value="rooms" className="mt-0 space-y-6">
+          <div>
+            <h3 className="text-xl font-semibold tracking-tight text-gray-900 mb-1">Room Types</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              Configure the categories of rooms available at your property and their base rates.
+            </p>
+          </div>
+          <RoomTypesCard />
+        </TabsContent>
 
-      <SimpleLookupCard
-        title="Payment Modes"
-        items={paymentModes}
-        onAdd={createPaymentMode}
-        onDelete={deletePaymentMode}
-        isAdding={isAddingMode}
-      />
+        <TabsContent value="lookups" className="mt-0 space-y-6">
+          <div>
+            <h3 className="text-xl font-semibold tracking-tight text-gray-900 mb-1">System Lists</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              Manage the dropdown options used across the app.
+            </p>
+          </div>
+          
+          <SimpleLookupCard
+            title="Payment Modes"
+            items={paymentModes}
+            onAdd={createPaymentMode}
+            onDelete={deletePaymentMode}
+            isAdding={isAddingMode}
+          />
 
-      <SimpleLookupCard
-        title="Expense Categories"
-        items={expenseCategories}
-        onAdd={createExpenseCategory}
-        onDelete={deleteExpenseCategory}
-        isAdding={isAddingCategory}
-      />
+          <SimpleLookupCard
+            title="Expense Categories"
+            items={expenseCategories}
+            onAdd={createExpenseCategory}
+            onDelete={deleteExpenseCategory}
+            isAdding={isAddingCategory}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
