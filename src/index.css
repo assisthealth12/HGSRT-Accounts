@@ -4,13 +4,13 @@
 @theme {
   --color-border: hsl(214 32% 91%);
   --color-input: hsl(214 32% 91%);
-  --color-ring: hsl(244 76% 59%);
+  --color-ring: hsl(161 94% 30%);
   --color-background: hsl(210 40% 98%);
   --color-foreground: hsl(222 47% 11%);
 
-  --color-primary: hsl(244 76% 59%);
-  --color-primary-dark: hsl(244 55% 41%);
-  --color-primary-foreground: hsl(210 40% 98%);
+  --color-primary: hsl(161 94% 30%);
+  --color-primary-dark: hsl(161 94% 20%);
+  --color-primary-foreground: hsl(0 0% 100%);
 
   --color-secondary: hsl(214 32% 91%);
   --color-secondary-foreground: hsl(215 16% 47%);
