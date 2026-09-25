@@ -39,7 +39,7 @@ export const checkInGuest = onCall(async (request) => {
         if (!roomDoc.exists) {
           throw new HttpsError('not-found', `Room ${roomDoc.id} not found.`);
         }
-        const room = roomDoc.data();
+        const room = roomDoc.data() as any;
         if (room?.propertyId !== propertyId) {
            throw new HttpsError('permission-denied', 'Room does not belong to this property.');
         }

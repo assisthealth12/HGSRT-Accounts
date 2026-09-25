@@ -52,7 +52,8 @@ export function POSView() {
 
     setIsPunching(true);
     try {
-      const punchKOT = httpsCallable(functions, 'punchKOT');
+      // Deployed under the 'restaurant' namespace (functions/src/index.ts exports './restaurant' as restaurant)
+      const punchKOT = httpsCallable(functions, 'restaurant-punchKOT');
       await punchKOT({
         propertyId,
         tableId: selectedTable,

@@ -44,7 +44,8 @@ export function useEmployees() {
     mutationFn: async (newEmployee: z.infer<typeof employeeSchema>) => {
       if (!propertyId) throw new Error('No property ID');
 
-      const createEmployee = httpsCallable(functions, 'createEmployee');
+      // Deployed under the 'sysadmin' namespace (functions/src/index.ts exports './admin' as sysadmin)
+      const createEmployee = httpsCallable(functions, 'sysadmin-createEmployee');
       const result = await createEmployee({ propertyId, employeeData: newEmployee });
       return result.data;
     },
