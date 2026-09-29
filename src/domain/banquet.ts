@@ -2,8 +2,7 @@ import { BaseDocument } from './base';
 import { Money } from './money';
 
 export interface BanquetSale extends BaseDocument {
-  date: string; // YYYY-MM-DD
-  eventName: string;
+  saleDate: string; // YYYY-MM-DD, unique per property
   onlineAmount: Money;
   cashAmount: Money;
 }

@@ -3,6 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuditLogs, AuditLogEntry } from '@/hooks/useAuditLogs';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { LoadingState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ShieldCheck } from 'lucide-react';
 
 function actionColor(action: string) {
   if (action === 'delete') return 'text-destructive border-destructive';
@@ -38,17 +42,16 @@ export function AuditLogPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Audit Log</h2>
-        <p className="text-muted-foreground">
-          Every edit and delete made by Manager accounts, most recent first.
-        </p>
-      </div>
+      <PageHeader
+        icon={ShieldCheck}
+        title="Audit Log"
+        description="Every edit and delete made by Manager accounts, most recent first."
+      />
 
       {isLoading ? (
-        <div className="py-12 text-center text-muted-foreground">Loading audit log...</div>
+        <LoadingState label="Loading audit log..." />
       ) : logs.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">No audited changes yet.</div>
+        <EmptyState icon={ShieldCheck} title="No audited changes yet" description="Edits and deletes will show up here." />
       ) : (
         <div className="space-y-3">
           {logs.map((entry) => (

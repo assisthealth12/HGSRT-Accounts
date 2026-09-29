@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Hotel } from 'lucide-react';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -33,10 +34,13 @@ export function LoginPage() {
 
   return (
     <Card className="w-full shadow-lg border-primary/20">
-      <CardHeader className="space-y-1 pb-6">
+      <CardHeader className="space-y-2 pb-6 items-center">
+        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+          <Hotel className="h-6 w-6 text-primary" />
+        </div>
         <CardTitle className="text-2xl font-bold text-center tracking-tight">Hotel GSR</CardTitle>
         <CardDescription className="text-center">
-          Enter your credentials to access the property management system
+          Sign in to manage rooms, restaurant, staff, and accounts
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleLogin}>

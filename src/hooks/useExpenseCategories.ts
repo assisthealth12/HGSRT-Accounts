@@ -17,7 +17,7 @@ export function useExpenseCategories() {
       const q = query(collection(db, 'expenseCategories'), where('propertyId', '==', propertyId));
       const snapshot = await getDocs(q);
       const categories = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as ExpenseCategoryOption[];
-      return excludeSoftDeleted(categories).filter(c => c.active);
+      return excludeSoftDeleted(categories).filter(c => c.active).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     },
     enabled: !!propertyId,
   });
@@ -33,6 +33,7 @@ export function useCreateExpenseCategory() {
       if (!propertyId) throw new Error('No property ID');
       const data = {
         name,
+        sortOrder: 0,
         active: true,
         propertyId,
         createdAt: Date.now(),

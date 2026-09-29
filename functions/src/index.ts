@@ -11,12 +11,4 @@ setGlobalOptions({
 });
 
 // Export domains
-export * as financial from './financial';
-export * as stays from './stays';
-export * as restaurant from './restaurant';
-export * as expenses from './expenses';
-export * as payroll from './payroll';
-export * as reports from './reports';
 export * as sysadmin from './admin';
-// export * from './pdf';
-// export * from './imports';

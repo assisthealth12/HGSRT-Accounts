@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { BanquetSale } from '@/domain/banquet';
-import { excludeSoftDeleted } from '@/domain/audit';
+import { excludeSoftDeleted, diffFields } from '@/domain/audit';
+import { logAudit } from '@/lib/audit';
 
 export function useBanquetSales() {
   const propertyId = useAuthStore((state) => state.propertyId);
@@ -20,32 +21,66 @@ export function useBanquetSales() {
 
       const snapshot = await getDocs(q);
       const sales = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as BanquetSale[];
-      return excludeSoftDeleted(sales);
+      return excludeSoftDeleted(sales).sort((a, b) => a.saleDate.localeCompare(b.saleDate));
     },
     enabled: !!propertyId,
   });
 }
 
-export function useCreateBanquetSale() {
+// One doc per property per date (deterministic id), so re-saving the same date
+// always updates that one row instead of creating a duplicate.
+export function useUpsertBanquetSale() {
   const propertyId = useAuthStore((state) => state.propertyId);
   const user = useAuthStore((state) => state.user);
+  const role = useAuthStore((state) => state.role);
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (sale: { date: string; eventName: string; onlineAmount: number; cashAmount: number }) => {
-      if (!propertyId) throw new Error('No property ID');
+    mutationFn: async ({
+      saleDate,
+      onlineAmount,
+      cashAmount,
+      existing,
+    }: {
+      saleDate: string;
+      onlineAmount: number;
+      cashAmount: number;
+      existing?: BanquetSale;
+    }) => {
+      if (!propertyId || !user) throw new Error('Not authenticated');
+
+      const docId = existing?.id ?? `${propertyId}_${saleDate}`;
+      const docRef = doc(db, 'banquetSales', docId);
 
       const data = {
-        ...sale,
+        saleDate,
+        onlineAmount,
+        cashAmount,
         propertyId,
-        createdAt: Date.now(),
-        createdBy: user?.uid ?? 'unknown',
+        createdAt: existing?.createdAt ?? Date.now(),
+        createdBy: existing?.createdBy ?? user.uid,
         updatedAt: Date.now(),
-        updatedBy: user?.uid ?? 'unknown',
+        updatedBy: user.uid,
       };
 
-      const docRef = await addDoc(collection(db, 'banquetSales'), data);
-      return { id: docRef.id, ...data };
+      await setDoc(docRef, data, { merge: true });
+
+      if (existing) {
+        const changes = diffFields(existing, { ...existing, ...data });
+        if (changes.length > 0) {
+          await logAudit({
+            propertyId,
+            userId: user.uid,
+            userRole: role,
+            action: 'edit',
+            entityType: 'banquetSale',
+            entityId: docId,
+            changes,
+          });
+        }
+      }
+
+      return { id: docId, ...data };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['banquetSales', propertyId] });

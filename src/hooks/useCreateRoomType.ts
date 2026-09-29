@@ -11,7 +11,7 @@ export function useCreateRoomType() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (roomType: { name: string; baseRate: number; extraBedRate: number; baseOccupancy: number; maxOccupancy: number }) => {
+    mutationFn: async (roomType: { name: string; sortOrder: number }) => {
       if (!propertyId) throw new Error('No property ID');
       const data = {
         ...roomType,

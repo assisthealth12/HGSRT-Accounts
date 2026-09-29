@@ -5,6 +5,8 @@ import {
   ColumnFiltersState,
   SortingState,
   VisibilityState,
+} from '@tanstack/react-table';
+import {
   useLegacyTable as useReactTable,
   getCoreRowModel,
   getFilteredRowModel,

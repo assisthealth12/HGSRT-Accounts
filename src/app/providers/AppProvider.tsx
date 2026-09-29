@@ -5,6 +5,8 @@ import { router } from '../router';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { useAuthStore } from '@/store/authStore';
+import { Toaster } from '@/components/ui/toaster';
+import { ConfirmDialogHost } from '@/hooks/use-confirm';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +49,8 @@ export function AppProvider() {
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
+      <Toaster />
+      <ConfirmDialogHost />
     </QueryClientProvider>
   );
 }

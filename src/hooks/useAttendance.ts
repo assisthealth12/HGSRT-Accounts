@@ -39,12 +39,12 @@ export function useMarkAttendance() {
     mutationFn: async ({
       staffId,
       date,
-      present,
+      status,
       existing,
     }: {
       staffId: string;
       date: string;
-      present: boolean;
+      status: 'present' | 'paid_leave' | 'absent';
       existing?: AttendanceRecord;
     }) => {
       if (!propertyId || !user) throw new Error('Not authenticated');
@@ -55,7 +55,8 @@ export function useMarkAttendance() {
       const data = {
         staffId,
         date,
-        present,
+        status,
+        present: status === 'present', // fallback for legacy code still relying on boolean
         propertyId,
         createdAt: existing?.createdAt ?? Date.now(),
         createdBy: existing?.createdBy ?? user.uid,
@@ -82,8 +83,9 @@ export function useMarkAttendance() {
 
       return { id: docId, ...data };
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['attendance', variables.date, propertyId] });
+    onSuccess: () => {
+      // Invalidate all attendance queries so both Daily and Monthly views update immediately
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
     },
   });
 }
