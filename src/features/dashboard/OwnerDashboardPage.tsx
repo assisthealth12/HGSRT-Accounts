@@ -10,6 +10,8 @@ import { useBookings } from '@/hooks/useBookings';
 import { usePayments } from '@/hooks/usePayments';
 import { useRestaurantDailySales } from '@/hooks/useRestaurantDailySales';
 import { useBanquetSales } from '@/hooks/useBanquetSales';
+import { useBanquetBookings } from '@/hooks/useBanquetBookings';
+import { banquetPending } from '@/domain/banquetBooking';
 import { useExpenses } from '@/hooks/useExpenses';
 import { useStaff } from '@/hooks/useStaff';
 import { usePayrollPayments } from '@/hooks/usePayrollPayments';
@@ -51,6 +53,7 @@ export function OwnerDashboardPage() {
   const { data: payments = [] } = usePayments();
   const { data: restaurantSales = [] } = useRestaurantDailySales();
   const { data: banquetSales = [] } = useBanquetSales();
+  const { data: banquetBookings = [] } = useBanquetBookings();
   const { data: expenses = [] } = useExpenses();
   const { staff } = useStaff();
   const { data: payrollPayments = [] } = usePayrollPayments();
@@ -75,8 +78,17 @@ export function OwnerDashboardPage() {
   const restaurantPending = restaurantInRange.reduce((acc, s) => acc + s.pendingAmount, 0);
 
   const banquetInRange = banquetSales.filter(s => inRange(s.saleDate, from, to));
-  const banquetSalesTotal = banquetInRange.reduce((acc, s) => acc + s.onlineAmount + s.cashAmount, 0);
-  const banquetCollectedTotal = banquetSalesTotal; // banquet has no pending field in the spec
+  const banquetBookingsInRange = banquetBookings.filter(b => inRange(b.eventDate, from, to));
+  const banquetSalesTotal = banquetInRange.reduce((acc, s) => acc + s.onlineAmount + s.cashAmount, 0) + 
+                            banquetBookingsInRange.reduce((acc, b) => acc + b.quotedAmount, 0);
+  
+  const banquetCollectedTotal = banquetInRange.reduce((acc, s) => acc + s.onlineAmount + s.cashAmount, 0) +
+                                banquetBookingsInRange.reduce((acc, b) => {
+                                  const p = paymentsByBooking.get(b.id) || [];
+                                  return acc + p.filter(x => inRange(x.paidOn, from, to)).reduce((s, x) => s + x.amount, 0);
+                                }, 0);
+  
+  const banquetPendingAmount = banquetBookingsInRange.reduce((acc, b) => acc + banquetPending(b, paymentsByBooking.get(b.id) || []), 0);
 
   const totalGrossRevenue = roomRevenue + restaurantSalesTotal + banquetSalesTotal;
   const totalCollected = roomCollected + restaurantCollectedTotal + banquetCollectedTotal;
@@ -88,7 +100,7 @@ export function OwnerDashboardPage() {
     .filter(e => inRange(e.paidOn, from, to))
     .reduce((acc, e) => acc + e.billAmount, 0) + totalPayrollPaid;
   const netProfit = totalGrossRevenue - totalExpenditure;
-  const totalPending = roomPending + restaurantPending;
+  const totalPending = roomPending + restaurantPending + banquetPendingAmount;
 
   const trendData = useMemo(() => {
     const dates: string[] = [];
@@ -102,8 +114,9 @@ export function OwnerDashboardPage() {
       const dayRoom = bookings.filter(b => b.checkIn === date).reduce((acc, b) => acc + bookingTotal(b), 0);
       const sale = restaurantSales.find(s => s.saleDate === date);
       const dayRestaurant = sale ? restaurantBooked(sale.onlineAmount, sale.cashAmount, sale.pendingAmount) : 0;
-      const banquet = banquetSales.find(s => s.saleDate === date);
-      const dayBanquet = banquet ? banquet.onlineAmount + banquet.cashAmount : 0;
+      const dayBanquetSales = banquetSales.find(s => s.saleDate === date);
+      const dayBanquetEvents = banquetBookings.filter(b => b.eventDate === date).reduce((acc, b) => acc + b.quotedAmount, 0);
+      const dayBanquet = (dayBanquetSales ? dayBanquetSales.onlineAmount + dayBanquetSales.cashAmount : 0) + dayBanquetEvents;
       const totalRev = dayRoom + dayRestaurant + dayBanquet;
       
       const d = new Date(date);
@@ -160,22 +173,69 @@ export function OwnerDashboardPage() {
         }
       />
 
-      <div>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Overall Performance</div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard label="Gross Revenue" value={formatINR(totalGrossRevenue)} colorTheme="blue" onClick={() => navigate('/bookings')} footerText="View Bookings" />
-          <StatCard label="Total Collected" value={formatINR(totalCollected)} colorTheme="green" onClick={() => navigate('/bookings')} footerText="View Bookings" />
-          <StatCard label="Total Expenses" value={formatINR(totalExpenditure)} colorTheme="orange" onClick={() => navigate('/expenses')} footerText="View Expenses" />
-          <StatCard label="Net Profit" value={formatINR(netProfit)} colorTheme={netProfit >= 0 ? 'green' : 'red'} />
+      <div className="space-y-6">
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Gross Revenue Breakdown</div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard label="Room Revenue" value={formatINR(roomRevenue)} colorTheme="blue" onClick={() => navigate('/bookings')} footerText="View Bookings" />
+            <StatCard label="Restaurant Revenue" value={formatINR(restaurantSalesTotal)} colorTheme="blue" onClick={() => navigate('/restaurant')} footerText="View Restaurant" />
+            <StatCard label="Banquet Revenue" value={formatINR(banquetSalesTotal)} colorTheme="blue" onClick={() => navigate('/banquet')} footerText="View Banquet" />
+            <div className="col-span-1 md:col-span-1 rounded-2xl bg-blue-600 shadow-sm border border-blue-700/50 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+              <div className="p-6 relative z-10">
+                <div className="text-sm font-bold text-white/80 uppercase tracking-widest mb-1">Total Gross Revenue</div>
+                <div className="text-3xl font-black text-white">{formatINR(totalGrossRevenue)}</div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="border-t pt-6">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending Dues</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Room Pending" value={formatINR(roomPending)} colorTheme="orange" icon={AlertCircle} onClick={() => navigate('/pending-dues')} footerText="Clear Room Dues" />
-          <StatCard label="Restaurant Pending" value={formatINR(restaurantPending)} colorTheme="pink" icon={AlertCircle} onClick={() => navigate('/restaurant')} footerText="Clear Restaurant Dues" />
-          <StatCard label="Total Pending" value={formatINR(totalPending)} colorTheme="red" icon={AlertCircle} onClick={() => navigate('/pending-dues')} footerText="View All Dues" />
+        <div className="border-t pt-6">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Collected Breakdown</div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard label="Room Collected" value={formatINR(roomCollected)} colorTheme="green" onClick={() => navigate('/bookings')} footerText="View Bookings" />
+            <StatCard label="Restaurant Collected" value={formatINR(restaurantCollectedTotal)} colorTheme="green" onClick={() => navigate('/restaurant')} footerText="View Restaurant" />
+            <StatCard label="Banquet Collected" value={formatINR(banquetCollectedTotal)} colorTheme="green" onClick={() => navigate('/banquet')} footerText="View Banquet" />
+            <div className="col-span-1 md:col-span-1 rounded-2xl bg-emerald-600 shadow-sm border border-emerald-700/50 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+              <div className="p-6 relative z-10">
+                <div className="text-sm font-bold text-white/80 uppercase tracking-widest mb-1">Total Collected</div>
+                <div className="text-3xl font-black text-white">{formatINR(totalCollected)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t pt-6">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending Dues</div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard label="Room Pending" value={formatINR(roomPending)} colorTheme="orange" icon={AlertCircle} onClick={() => navigate('/pending-dues')} footerText="Clear Room Dues" />
+            <StatCard label="Restaurant Pending" value={formatINR(restaurantPending)} colorTheme="pink" icon={AlertCircle} onClick={() => navigate('/restaurant')} footerText="Clear Restaurant Dues" />
+            <StatCard label="Banquet Pending" value={formatINR(banquetPendingAmount)} colorTheme="purple" icon={AlertCircle} onClick={() => navigate('/banquet')} footerText="Clear Banquet Dues" />
+            <div className="col-span-1 md:col-span-1 rounded-2xl bg-red-500 shadow-sm border border-red-600/50 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+              <div className="p-6 relative z-10">
+                <div className="text-sm font-bold text-white/80 uppercase tracking-widest mb-1">Total Pending</div>
+                <div className="text-3xl font-black text-white flex items-center gap-2"><AlertCircle className="w-6 h-6 text-white/80" /> {formatINR(totalPending)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t pt-6">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expenses & Profit</div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard label="Operational Expenses" value={formatINR(totalExpenditure - totalPayrollPaid)} colorTheme="orange" onClick={() => navigate('/expenses')} footerText="View Expenses" />
+            <StatCard label="Payroll Expenses" value={formatINR(totalPayrollPaid)} colorTheme="orange" onClick={() => navigate('/staff')} footerText="View Payroll" />
+            <StatCard label="Total Expenditure" value={formatINR(totalExpenditure)} colorTheme="red" />
+            <div className={`col-span-1 md:col-span-1 rounded-2xl shadow-sm border overflow-hidden relative ${netProfit >= 0 ? 'bg-emerald-600 border-emerald-700/50' : 'bg-red-600 border-red-700/50'}`}>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+              <div className="p-6 relative z-10">
+                <div className="text-sm font-bold text-white/80 uppercase tracking-widest mb-1">Net Profit</div>
+                <div className="text-3xl font-black text-white">{formatINR(netProfit)}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

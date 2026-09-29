@@ -87,3 +87,35 @@ export function useUpsertBanquetSale() {
     },
   });
 }
+
+export function useDeleteBanquetSale() {
+  const propertyId = useAuthStore((state) => state.propertyId);
+  const user = useAuthStore((state) => state.user);
+  const role = useAuthStore((state) => state.role);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (!propertyId || !user) throw new Error('Not authenticated');
+      const docRef = doc(db, 'banquetSales', id);
+      
+      await setDoc(docRef, { 
+        deletedAt: Date.now(), 
+        deletedBy: user.uid 
+      }, { merge: true });
+
+      await logAudit({
+        propertyId,
+        userId: user.uid,
+        userRole: role,
+        action: 'delete',
+        entityType: 'banquetSale',
+        entityId: id,
+        changes: [{ field: 'deletedAt', oldValue: null, newValue: Date.now() }],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['banquetSales', propertyId] });
+    },
+  });
+}

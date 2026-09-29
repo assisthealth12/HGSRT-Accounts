@@ -69,7 +69,7 @@ service cloud.firestore {
     match /banquetBookings/{id} {
       allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /payments/{id} {

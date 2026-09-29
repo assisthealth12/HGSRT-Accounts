@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR } from '@/domain/money';
 import { BanquetBooking, banquetPending, banquetReceived } from '@/domain/banquetBooking';
-import { useBanquetSales, useUpsertBanquetSale } from '@/hooks/useBanquetSales';
+import { useBanquetSales, useUpsertBanquetSale, useDeleteBanquetSale } from '@/hooks/useBanquetSales';
 import { useBanquetBookings, useDeleteBanquetBooking } from '@/hooks/useBanquetBookings';
 import { usePayments } from '@/hooks/usePayments';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -14,12 +14,13 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/badge';
-import { PartyPopper, CalendarDays, BookOpenText } from 'lucide-react';
+import { PartyPopper, CalendarDays, BookOpenText, Plus, Trash2, Edit, MoreHorizontal, CreditCard, Banknote, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { confirmAction } from '@/hooks/use-confirm';
+import { StatCard } from '@/components/shared/StatCard';
 import { NewBanquetBookingDialog } from './NewBanquetBookingDialog';
 import { EditBanquetBookingDialog } from './EditBanquetBookingDialog';
 import { RecordBanquetPaymentDialog } from './RecordBanquetPaymentDialog';
-import { MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +33,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
 
 function todayISO() {
@@ -48,25 +48,13 @@ function toPaise(value: string) {
   return isNaN(n) ? 0 : Math.round(n * 100);
 }
 
-function EventRegisterTab() {
+function EventRegisterSection() {
   const { data: bookings = [] } = useBanquetBookings();
   const { data: payments = [] } = usePayments();
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [payingBooking, setPayingBooking] = useState<BanquetBooking | null>(null);
   const [editingBooking, setEditingBooking] = useState<BanquetBooking | null>(null);
-  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
   const { mutateAsync: deleteBooking, isPending: isDeleting } = useDeleteBanquetBooking();
-
-  const confirmDelete = async () => {
-    if (!deletingBookingId) return;
-    try {
-      await deleteBooking(deletingBookingId);
-      toast({ title: 'Event Deleted' });
-      setDeletingBookingId(null);
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    }
-  };
 
   const paymentsByBooking = useMemo(() => {
     const map = new Map<string, typeof payments>();
@@ -87,7 +75,7 @@ function EventRegisterTab() {
       header: 'Received',
       cell: ({ row }) => {
         const received = banquetReceived(paymentsByBooking.get(row.original.id) || []);
-        return <span className="text-success font-medium">{formatINR(received)}</span>;
+        return <span className="text-emerald-600 font-bold">{formatINR(received)}</span>;
       }
     },
     {
@@ -96,8 +84,8 @@ function EventRegisterTab() {
       cell: ({ row }) => {
         const pending = banquetPending(row.original, paymentsByBooking.get(row.original.id) || []);
         return pending > 0
-          ? <Badge variant="destructive">{formatINR(pending)}</Badge>
-          : <Badge variant="outline" className="text-success border-success">Fully Paid</Badge>;
+          ? <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">{formatINR(pending)}</Badge>
+          : <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">Fully Paid</Badge>;
       },
     },
     {
@@ -111,9 +99,22 @@ function EventRegisterTab() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setEditingBooking(row.original)}>
-                <Edit className="w-4 h-4 mr-2" /> Edit Details
+                <Edit className="w-4 h-4 mr-2 text-blue-600" /> Edit Details
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDeletingBookingId(row.original.id)} className="text-destructive">
+              <DropdownMenuItem 
+                className="text-red-600"
+                onClick={async () => {
+                  const ok = await confirmAction({ 
+                    title: 'Delete Event?', 
+                    description: 'This action cannot be undone. This will permanently delete the event.', 
+                    variant: 'destructive' 
+                  });
+                  if (ok) {
+                    await deleteBooking(row.original.id);
+                    toast({ title: 'Event Deleted' });
+                  }
+                }}
+              >
                 <Trash2 className="w-4 h-4 mr-2" /> Delete Event
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -124,9 +125,15 @@ function EventRegisterTab() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setIsNewOpen(true)}>Book Banquet Event</Button>
+    <div className="space-y-6 pt-4">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Banquet Events</h2>
+          <p className="text-sm text-gray-500">Manage large event bookings and their payments.</p>
+        </div>
+        <Button onClick={() => setIsNewOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 h-11 px-6 rounded-xl">
+          <Plus className="w-4 h-4 mr-2" /> Book Event
+        </Button>
       </div>
 
       {sortedBookings.length === 0 ? (
@@ -134,55 +141,57 @@ function EventRegisterTab() {
           icon={BookOpenText}
           title="No banquet events booked yet"
           description="Click the button above to book an event."
-          action={<Button onClick={() => setIsNewOpen(true)}>Book Banquet Event</Button>}
+          action={<Button onClick={() => setIsNewOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">Book Banquet Event</Button>}
         />
       ) : (
-        <DataTable columns={columns} data={sortedBookings} searchKey="customerName" />
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1">
+          <DataTable columns={columns} data={sortedBookings} searchKey="customerName" />
+        </div>
       )}
 
       <NewBanquetBookingDialog open={isNewOpen} onOpenChange={setIsNewOpen} />
       <EditBanquetBookingDialog booking={editingBooking} onOpenChange={(open) => !open && setEditingBooking(null)} />
       <RecordBanquetPaymentDialog booking={payingBooking} onOpenChange={(open) => !open && setPayingBooking(null)} />
-
-      <Dialog open={!!deletingBookingId} onOpenChange={(open) => !open && setDeletingBookingId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Are you absolutely sure?</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. This will permanently delete the event and remove its data from our servers.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setDeletingBookingId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
-              {isDeleting ? 'Deleting...' : 'Delete Event'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-function DailyEntryTab() {
-  const [saleDate, setSaleDate] = useState(todayISO());
+function DailyExtraSalesSection() {
   const { data: banquetSales = [] } = useBanquetSales();
-  const { mutateAsync: upsertBanquetSale, isPending: isSavingBanquet } = useUpsertBanquetSale();
   const { data: banquetBookings = [] } = useBanquetBookings();
   const { data: payments = [] } = usePayments();
+  const { mutateAsync: upsertBanquetSale, isPending: isSavingBanquet } = useUpsertBanquetSale();
+  const { mutateAsync: deleteBanquetSale } = useDeleteBanquetSale();
 
-  const existingBanquet = banquetSales.find(s => s.saleDate === saleDate);
+  const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
+  // Dialog State
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [saleDate, setSaleDate] = useState(todayISO());
   const [banquetOnline, setBanquetOnline] = useState('');
   const [banquetCash, setBanquetCash] = useState('');
 
-  // Re-hydrate the form whenever the selected date (or its saved data) changes.
-  const loadedDateRef = React.useRef<string | null>(null);
-  if (loadedDateRef.current !== saleDate) {
-    loadedDateRef.current = saleDate;
-    setBanquetOnline(toRupeeInput(existingBanquet?.onlineAmount ?? 0));
-    setBanquetCash(toRupeeInput(existingBanquet?.cashAmount ?? 0));
-  }
+  const existingBanquet = banquetSales.find(s => s.saleDate === saleDate);
+
+  // Re-hydrate the form when opening dialog or changing date
+  useEffect(() => {
+    if (isDialogOpen) {
+      setBanquetOnline(toRupeeInput(existingBanquet?.onlineAmount ?? 0));
+      setBanquetCash(toRupeeInput(existingBanquet?.cashAmount ?? 0));
+    }
+  }, [saleDate, isDialogOpen, existingBanquet]);
+
+  const handleOpenAddDialog = () => {
+    setSaleDate(todayISO()); // default to today
+    setIsDialogOpen(true);
+  };
+
+  const handleOpenEditDialog = (date: string) => {
+    setSaleDate(date);
+    setIsDialogOpen(true);
+  };
 
   const banquetOnlineAmount = toPaise(banquetOnline);
   const banquetCashAmount = toPaise(banquetCash);
@@ -204,68 +213,11 @@ function DailyEntryTab() {
       existing: existingBanquet,
     });
     toast({ title: 'Saved', description: `Banquet sales for ${saleDate} updated.` });
+    setIsDialogOpen(false);
   };
 
-  return (
-    <div className="space-y-8 max-w-5xl">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <div>
-          <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Entry Date</Label>
-          <Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className="w-48 text-lg rounded-xl h-12" />
-        </div>
-        <Button onClick={handleSave} disabled={isSavingBanquet} className="rounded-xl h-12 px-8 font-semibold shadow-sm text-base">
-          {isSavingBanquet ? 'Saving...' : `Save for ${saleDate}`}
-        </Button>
-      </div>
-
-      <div className="space-y-8">
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-6 h-6 rounded flex items-center justify-center bg-blue-100 text-blue-600 font-bold text-sm">
-              <PartyPopper className="w-4 h-4" />
-            </div>
-            <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Banquet Sales</h2>
-          </div>
-          <Card className="rounded-2xl border-none shadow-md overflow-hidden bg-white">
-            <div className="h-1.5 w-full bg-gradient-to-r from-blue-400 to-blue-600" />
-            <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold text-gray-700">Online (₹)</Label>
-                  <Input type="number" value={banquetOnline} onChange={(e) => setBanquetOnline(e.target.value)} className="rounded-xl text-lg h-12 bg-gray-50/50" placeholder="0" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold text-gray-700">Misc Cash (₹)</Label>
-                  <Input type="number" value={banquetCash} onChange={(e) => setBanquetCash(e.target.value)} className="rounded-xl text-lg h-12 bg-gray-50/50" placeholder="0" />
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <span className="text-sm font-bold text-gray-600 uppercase tracking-widest">Event Payments Collected (Auto)</span>
-                <span className="text-xl font-bold text-gray-800">{formatINR(eventPaymentsCollected)}</span>
-              </div>
-              
-              <div className="pt-6 border-t border-gray-100">
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                  <div className="text-sm font-black text-blue-900 uppercase tracking-widest">Banquet Total</div>
-                  <div className="text-4xl font-black text-blue-800">{formatINR(banquetTotal)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function MonthlyViewTab() {
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
-  const { data: banquetSales = [] } = useBanquetSales();
-  const { data: banquetBookings = [] } = useBanquetBookings();
-  const { data: payments = [] } = usePayments();
-
-  const rows = useMemo(() => {
+  // Monthly View Calculations
+  const monthlyRows = useMemo(() => {
     const banquetIds = new Set(banquetBookings.map(b => b.id));
     const banquetByDate = new Map(banquetSales.map(s => [s.saleDate, s]));
     const banquetPayments = payments.filter(p => banquetIds.has(p.bookingId));
@@ -279,7 +231,7 @@ function MonthlyViewTab() {
       ...paymentDates,
     ]);
 
-    return Array.from(dates).sort().map(date => {
+    return Array.from(dates).sort((a, b) => b.localeCompare(a)).map(date => { // Descending
       const b = banquetByDate.get(date);
       const bOnline = b?.onlineAmount || 0;
       const bCash = b?.cashAmount || 0;
@@ -291,89 +243,252 @@ function MonthlyViewTab() {
       const bTotal = bOnline + bCash + bEventPayments;
 
       return {
+        id: b?.id,
         date, bOnline, bCash, bEventPayments, bTotal,
       };
     });
   }, [banquetSales, month, banquetBookings, payments]);
 
-  const totals = rows.reduce((acc, r) => ({
+  const totals = monthlyRows.reduce((acc, r) => ({
     bOnline: acc.bOnline + r.bOnline,
     bCash: acc.bCash + r.bCash,
     bEventPayments: acc.bEventPayments + r.bEventPayments,
     bTotal: acc.bTotal + r.bTotal,
   }), { bOnline: 0, bCash: 0, bEventPayments: 0, bTotal: 0 });
 
+  // Pagination Logic
+  const totalPages = Math.ceil(monthlyRows.length / itemsPerPage);
+  const paginatedRows = monthlyRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   return (
-    <div className="space-y-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div className="max-w-xs">
-        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Month</Label>
-        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-xl h-11" />
+    <div className="space-y-6 pt-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm max-w-sm flex-1">
+          <CalendarDays className="w-5 h-5 text-gray-500" />
+          <div className="flex-1">
+            <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1 block">Select Month</Label>
+            <Input 
+              type="month" 
+              value={month} 
+              onChange={(e) => {
+                setMonth(e.target.value);
+                setCurrentPage(1);
+              }} 
+              className="h-10 font-bold border-none bg-gray-50/50 shadow-none focus-visible:ring-1 focus-visible:ring-emerald-500" 
+            />
+          </div>
+        </div>
+        
+        <Button 
+          onClick={handleOpenAddDialog} 
+          className="rounded-xl h-12 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Add Extra Sales Entry
+        </Button>
       </div>
 
-      {rows.length === 0 ? (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Extra Online" value={formatINR(totals.bOnline)} colorTheme="blue" icon={CreditCard} />
+        <StatCard label="Extra Cash" value={formatINR(totals.bCash)} colorTheme="green" icon={Banknote} />
+        <StatCard label="Event Payments" value={formatINR(totals.bEventPayments)} colorTheme="orange" icon={BookOpenText} />
+        <StatCard label="Total Revenue" value={formatINR(totals.bTotal)} colorTheme="purple" icon={PartyPopper} />
+      </div>
+
+      {monthlyRows.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No entries for this month yet" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50/80">
-              <tr>
-                <th className="text-left p-3 font-semibold text-gray-600">Date</th>
-                <th className="text-right p-3 font-semibold text-gray-600">Misc Online</th>
-                <th className="text-right p-3 font-semibold text-gray-600">Misc Cash</th>
-                <th className="text-right p-3 font-semibold text-gray-600">Event Payments</th>
-                <th className="text-right p-3 font-bold text-gray-800">Daily Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.date} className="border-t border-gray-100 hover:bg-gray-50/50 transition-colors">
-                  <td className="p-3 font-medium text-gray-700">{r.date}</td>
-                  <td className="p-3 text-right">{formatINR(r.bOnline)}</td>
-                  <td className="p-3 text-right">{formatINR(r.bCash)}</td>
-                  <td className="p-3 text-right">{formatINR(r.bEventPayments)}</td>
-                  <td className="p-3 text-right font-bold text-gray-800 bg-gray-50/50">{formatINR(r.bTotal)}</td>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="p-4 font-semibold text-gray-600 w-[150px]">Date</th>
+                  <th className="p-4 font-semibold text-gray-600 text-right">Extra Online</th>
+                  <th className="p-4 font-semibold text-gray-600 text-right">Extra Cash</th>
+                  <th className="p-4 font-semibold text-orange-600 text-right">Event Payments</th>
+                  <th className="p-4 font-bold text-gray-900 text-right">Daily Total</th>
+                  <th className="p-4 font-semibold text-gray-600 text-center w-[120px]">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-200">
-              <tr>
-                <td className="p-3 text-gray-700">Total</td>
-                <td className="p-3 text-right">{formatINR(totals.bOnline)}</td>
-                <td className="p-3 text-right">{formatINR(totals.bCash)}</td>
-                <td className="p-3 text-right">{formatINR(totals.bEventPayments)}</td>
-                <td className="p-3 text-right text-gray-800">{formatINR(totals.bTotal)}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedRows.map(r => (
+                  <tr key={r.date} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="p-4 font-medium text-gray-900">{r.date}</td>
+                    <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.bOnline)}</td>
+                    <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.bCash)}</td>
+                    <td className="p-4 text-right font-medium text-orange-600">{formatINR(r.bEventPayments)}</td>
+                    <td className="p-4 text-right font-bold text-gray-900 bg-gray-50/30">{formatINR(r.bTotal)}</td>
+                    <td className="p-4">
+                      <div className="flex items-center justify-center gap-2">
+                        {/* Only show Edit/Delete if there's an actual misc entry (r.id) OR if we want to let them ADD an entry for a date that only has event payments. */}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-blue-600 hover:bg-blue-50" 
+                          onClick={() => handleOpenEditDialog(r.date)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        {r.id ? (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-red-600 hover:bg-red-50" 
+                            onClick={async () => {
+                              const ok = await confirmAction({ title: 'Delete Entry', description: `Delete extra sales entry for ${r.date}?`, variant: 'destructive' });
+                              if (ok && r.id) {
+                                await deleteBanquetSale(r.id);
+                                toast({ title: 'Deleted' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <div className="w-8 h-8" /> // Empty placeholder to keep alignment
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+              <div className="text-sm text-gray-500">
+                Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, monthlyRows.length)}</span> of <span className="font-medium">{monthlyRows.length}</span> entries
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <div className="text-sm font-medium text-gray-700 px-2">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* DIALOG FOR ADD / EDIT */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{existingBanquet ? 'Edit Extra Sales Entry' : 'Add Extra Sales Entry'}</DialogTitle>
+            <DialogDescription>Enter extra banquet collections for the selected date.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-2">
+            <div>
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Entry Date</Label>
+              <Input 
+                type="date" 
+                value={saleDate} 
+                onChange={(e) => setSaleDate(e.target.value)} 
+                className="w-full sm:w-48 text-lg font-medium rounded-xl h-12" 
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-blue-500" /> Extra Online (₹)
+                </Label>
+                <Input type="number" value={banquetOnline} onChange={(e) => setBanquetOnline(e.target.value)} className="rounded-xl h-11" placeholder="0" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Banknote className="w-4 h-4 text-green-500" /> Extra Cash (₹)
+                </Label>
+                <Input type="number" value={banquetCash} onChange={(e) => setBanquetCash(e.target.value)} className="rounded-xl h-11" placeholder="0" />
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-orange-50/50 border border-orange-100 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BookOpenText className="w-4 h-4 text-orange-600" />
+                <div className="text-sm font-semibold text-orange-900">Event Payments (Auto)</div>
+              </div>
+              <div className="text-lg font-bold text-orange-700">{formatINR(eventPaymentsCollected)}</div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100 text-center">
+              <div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Extras Total</div>
+                <div className="text-sm font-bold text-gray-800">{formatINR(banquetOnlineAmount + banquetCashAmount)}</div>
+              </div>
+              <div className="border-l border-gray-200">
+                <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1">Events Total</div>
+                <div className="text-sm font-bold text-orange-800">{formatINR(eventPaymentsCollected)}</div>
+              </div>
+              <div className="border-l border-gray-200">
+                <div className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-1">Daily Revenue</div>
+                <div className="text-sm font-bold text-purple-900">{formatINR(banquetTotal)}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11">
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={isSavingBanquet} className="rounded-xl h-11 bg-emerald-600 hover:bg-emerald-700 text-white px-6">
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                {isSavingBanquet ? 'Saving...' : 'Save Entry'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 export function BanquetSalesPage() {
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
       <PageHeader
         icon={PartyPopper}
-        title="Banquet Daily Sales"
-        description="One entry per date for all banquet hall sales and related operations."
+        title="Banquet Management"
+        description="Manage large events and track daily extra banquet sales."
       />
 
       <Tabs defaultValue="events" className="w-full">
         <TabsList className="mb-6 bg-gray-100 p-1 rounded-xl">
           <TabsTrigger value="events" className="rounded-lg px-6">Event Register</TabsTrigger>
-          <TabsTrigger value="entry" className="rounded-lg px-6">Daily Misc Sales</TabsTrigger>
-          <TabsTrigger value="monthly" className="rounded-lg px-6">Monthly View</TabsTrigger>
+          <TabsTrigger value="daily" className="rounded-lg px-6">Daily Extra Sales</TabsTrigger>
         </TabsList>
+        
         <TabsContent value="events" className="mt-0">
-          <EventRegisterTab />
+          <EventRegisterSection />
         </TabsContent>
-        <TabsContent value="entry" className="mt-0">
-          <DailyEntryTab />
-        </TabsContent>
-        <TabsContent value="monthly" className="mt-0">
-          <MonthlyViewTab />
+        <TabsContent value="daily" className="mt-0">
+          <DailyExtraSalesSection />
         </TabsContent>
       </Tabs>
     </div>
