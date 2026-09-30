@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -61,22 +61,20 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const nights = nightsBetween(checkIn, checkOut);
   
   const toggleRoom = (id: string) => {
-    setRoomIds(prev => {
-      const next = prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id];
-      // Auto-calculate tariff
-      const totalTariffCents = next.reduce((sum, rId) => {
-        const r = rooms.find(room => room.id === rId);
-        return sum + (r?.baseTariff || 0);
-      }, 0);
-      // setTariff as string in rupees, multiplied by nights
-      if (totalTariffCents > 0) {
-        setTariff((totalTariffCents * nights / 100).toString());
-      } else {
-        setTariff('');
-      }
-      return next;
-    });
+    setRoomIds(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
   };
+
+  useEffect(() => {
+    const totalTariffCents = roomIds.reduce((sum, rId) => {
+      const r = rooms.find(room => room.id === rId);
+      return sum + (r?.baseTariff || 0);
+    }, 0);
+    if (totalTariffCents > 0) {
+      setTariff((totalTariffCents * nights / 100).toString());
+    } else {
+      setTariff('');
+    }
+  }, [roomIds, nights, rooms]);
 
   const tariffCents = Math.round(parseFloat(tariff || '0') * 100);
   const gstPercentage = parseFloat(gst || '0');

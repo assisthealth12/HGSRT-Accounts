@@ -7,12 +7,17 @@ import { useExpenseCategories, useCreateExpenseCategory, useDeleteExpenseCategor
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useCreateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
 import { useRooms } from '@/hooks/useRooms';
-import { useCreateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
+import { useCreateRoom, useUpdateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { Settings } from 'lucide-react';
-
+import { Settings, Edit2, Trash2, Plus, Bed, LayoutGrid, Check, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { formatINR } from '@/domain/money';
+import { Room } from '@/domain/room';
+import { confirmAction } from '@/hooks/use-confirm';
+import { toast } from '@/hooks/use-toast';
 
 function SimpleLookupCard({
   title,
@@ -35,36 +40,49 @@ function SimpleLookupCard({
     setName('');
   };
 
+  const handleDelete = async (item: any) => {
+    const ok = await confirmAction({ title: 'Delete Item', description: `Are you sure you want to delete ${item.name}?` });
+    if (ok) {
+      await onDelete(item);
+      toast({ title: 'Deleted', description: `${item.name} removed successfully.` });
+    }
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{title}</CardTitle>
+    <Card className="shadow-sm border-gray-200">
+      <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4">
+        <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-gray-500" /> {title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap gap-3">
-          {items.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
-          {items.map(item => (
-            <Badge key={item.id} variant="secondary" className="flex items-center gap-2 py-1.5 px-4 rounded-full text-sm font-medium">
-              {item.name}
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-destructive transition-colors ml-1"
-                onClick={() => onDelete(item)}
-                aria-label={`Remove ${item.name}`}
-              >
-                ×
-              </button>
-            </Badge>
-          ))}
-        </div>
-        <div className="flex gap-3 items-center max-w-md">
+      <CardContent className="space-y-6 pt-6">
+        <div className="flex gap-3 items-center w-full max-w-md">
           <Input
-            placeholder="Add new..."
+            placeholder="Add new category..."
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+            className="h-11"
           />
-          <Button type="button" onClick={handleAdd} disabled={isAdding}>Add</Button>
+          <Button type="button" onClick={handleAdd} disabled={isAdding || !name.trim()} className="h-11 px-6">
+            <Plus className="w-4 h-4 mr-2" />
+            Add
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {items.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
+          {items.map(item => (
+            <div key={item.id} className="flex items-center gap-2 py-2 px-4 rounded-xl text-sm font-medium bg-white border border-gray-200 shadow-sm">
+              <span className="text-gray-700">{item.name}</span>
+              <div className="w-px h-4 bg-gray-200 mx-1" />
+              <button
+                type="button"
+                className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                onClick={() => handleDelete(item)}
+                aria-label={`Remove ${item.name}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
@@ -83,34 +101,126 @@ function RoomTypesCard() {
     setName('');
   };
 
+  const handleDelete = async (rt: any) => {
+    const ok = await confirmAction({ title: 'Delete Room Type', description: `Are you sure you want to delete ${rt.name}?` });
+    if (ok) {
+      await deleteRoomType(rt);
+      toast({ title: 'Deleted', description: `${rt.name} removed successfully.` });
+    }
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Room Types</CardTitle>
+    <Card className="shadow-sm border-gray-200">
+      <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4">
+        <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-gray-500" /> Room Types</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap gap-3">
+      <CardContent className="space-y-6 pt-6">
+        <div className="flex gap-3 items-center w-full max-w-md">
+          <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} className="h-11" />
+          <Button type="button" onClick={handleAdd} disabled={isPending || !name.trim()} className="h-11 px-6">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Type
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
           {roomTypes.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
           {roomTypes.map(rt => (
-            <Badge key={rt.id} variant="secondary" className="flex items-center gap-2 py-1.5 px-4 rounded-full text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100">
-              {rt.name}
+            <div key={rt.id} className="flex items-center gap-2 py-2 px-4 rounded-xl text-sm font-bold bg-blue-50/50 border border-blue-100 text-blue-800 shadow-sm">
+              <span>{rt.name}</span>
+              <div className="w-px h-4 bg-blue-200 mx-1" />
               <button
                 type="button"
-                className="text-slate-400 hover:text-red-500 transition-colors ml-1"
-                onClick={() => deleteRoomType(rt)}
+                className="text-blue-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                onClick={() => handleDelete(rt)}
                 aria-label={`Remove ${rt.name}`}
               >
-                ×
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
-            </Badge>
+            </div>
           ))}
-        </div>
-        <div className="flex gap-3 items-center max-w-md">
-          <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} />
-          <Button type="button" onClick={handleAdd} disabled={isPending}>Add</Button>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open: boolean, onOpenChange: (open: boolean) => void }) {
+  const { data: roomTypes = [] } = useRoomTypes();
+  const { mutateAsync: updateRoom, isPending } = useUpdateRoom();
+  
+  const [roomNumber, setRoomNumber] = useState('');
+  const [roomTypeId, setRoomTypeId] = useState('');
+  const [baseTariff, setBaseTariff] = useState('');
+  const [floor, setFloor] = useState('');
+
+  // Sync state when room changes
+  React.useEffect(() => {
+    if (room && open) {
+      setRoomNumber(room.roomNumber);
+      setRoomTypeId(room.roomTypeId);
+      setBaseTariff((room.baseTariff / 100).toString()); // Convert paise to rupees for input
+      setFloor(room.floor || '');
+    }
+  }, [room, open]);
+
+  const handleSave = async () => {
+    if (!room || !roomNumber.trim() || !roomTypeId || !baseTariff) return;
+    
+    await updateRoom({
+      id: room.id,
+      previous: room,
+      data: {
+        roomNumber: roomNumber.trim(),
+        roomTypeId,
+        baseTariff: Math.round(parseFloat(baseTariff) * 100), // Convert rupees to paise
+        isActive: room.isActive,
+        floor: floor.trim()
+      }
+    });
+    
+    toast({ title: 'Room Updated', description: 'Room details saved successfully.' });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Room Details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label>Room Number</Label>
+            <Input value={roomNumber} onChange={e => setRoomNumber(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Room Type</Label>
+            <Select value={roomTypeId} onValueChange={setRoomTypeId}>
+              <SelectTrigger><SelectValue placeholder="Select Type" /></SelectTrigger>
+              <SelectContent>
+                {roomTypes.map(rt => (
+                  <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Floor</Label>
+              <Input value={floor} onChange={e => setFloor(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Base Tariff (₹)</Label>
+              <Input type="number" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="mt-6">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={isPending || !roomNumber || !roomTypeId || !baseTariff}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -124,77 +234,133 @@ function RoomsManagementCard() {
   const [roomTypeId, setRoomTypeId] = useState('');
   const [baseTariff, setBaseTariff] = useState('');
   const [floor, setFloor] = useState('');
+  
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
   const handleAdd = async () => {
     if (!roomNumber.trim() || !roomTypeId || !baseTariff) return;
     await createRoom({
       roomNumber: roomNumber.trim(),
       roomTypeId,
-      baseTariff: parseInt(baseTariff, 10),
+      baseTariff: Math.round(parseFloat(baseTariff) * 100), // Convert rupees to paise
       isActive: true,
       floor: floor.trim()
     });
     setRoomNumber('');
+    toast({ title: 'Room Created', description: `Room ${roomNumber} added successfully.` });
     // Keep roomTypeId and baseTariff / floor to quickly add multiple similar rooms
   };
 
+  const handleDelete = async (room: Room) => {
+    const ok = await confirmAction({ title: 'Delete Room', description: `Are you sure you want to delete Room ${room.roomNumber}?`, variant: 'destructive' });
+    if (ok) {
+      await deleteRoom(room);
+      toast({ title: 'Deleted', description: `Room ${room.roomNumber} deleted.` });
+    }
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Rooms</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap gap-3">
-          {rooms.length === 0 && <span className="text-muted-foreground text-sm">No rooms added yet.</span>}
-          {rooms.map(room => {
-            const rt = roomTypes.find(t => t.id === room.roomTypeId);
-            return (
-              <Badge key={room.id} variant="secondary" className="flex items-center gap-2 py-1.5 px-4 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
-                {room.roomNumber} ({rt?.name || 'Unknown'}) - ₹{room.baseTariff}
-                <button
-                  type="button"
-                  className="text-emerald-400 hover:text-red-500 transition-colors ml-1"
-                  onClick={() => deleteRoom(room)}
-                  aria-label={`Remove ${room.roomNumber}`}
-                >
-                  ×
-                </button>
-              </Badge>
-            );
-          })}
-        </div>
-        <div className="flex flex-col md:flex-row gap-3 items-end">
-          <div className="space-y-1.5 flex-1">
-            <label className="text-xs font-medium text-muted-foreground">Room Number</label>
-            <Input placeholder="e.g. 101" value={roomNumber} onChange={e => setRoomNumber(e.target.value)} />
+    <>
+      <Card className="shadow-sm border-gray-200">
+        <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4 flex flex-row items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2"><Bed className="w-5 h-5 text-gray-500" /> Physical Rooms</CardTitle>
+          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 font-bold px-3">{rooms.length} Total Rooms</Badge>
+        </CardHeader>
+        <CardContent className="pt-6">
+          
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8">
+            <h3 className="text-sm font-bold text-gray-700 mb-4">Quick Add Room</h3>
+            <div className="flex flex-col md:flex-row gap-3 items-end">
+              <div className="space-y-1.5 flex-1">
+                <label className="text-xs font-semibold text-gray-600">Room Number</label>
+                <Input placeholder="e.g. 101" value={roomNumber} onChange={e => setRoomNumber(e.target.value)} className="bg-white" />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <label className="text-xs font-semibold text-gray-600">Room Type</label>
+                <Select value={roomTypeId} onValueChange={setRoomTypeId}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Select Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roomTypes.map(rt => (
+                      <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 w-24">
+                <label className="text-xs font-semibold text-gray-600">Floor</label>
+                <Input placeholder="e.g. 1" value={floor} onChange={e => setFloor(e.target.value)} className="bg-white" />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <label className="text-xs font-semibold text-gray-600">Base Tariff (₹)</label>
+                <Input type="number" placeholder="1500" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} className="bg-white" />
+              </div>
+              <Button type="button" onClick={handleAdd} disabled={isPending || !roomNumber || !roomTypeId || !baseTariff} className="w-full md:w-auto px-8 bg-emerald-600 hover:bg-emerald-700">
+                <Plus className="w-4 h-4 mr-2" /> Add Room
+              </Button>
+            </div>
           </div>
-          <div className="space-y-1.5 flex-1">
-            <label className="text-xs font-medium text-muted-foreground">Room Type</label>
-            <Select value={roomTypeId} onValueChange={setRoomTypeId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Type" />
-              </SelectTrigger>
-              <SelectContent>
-                {roomTypes.map(rt => (
-                  <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-gray-700">Manage Rooms</h3>
+            {rooms.length === 0 && <div className="text-muted-foreground text-sm py-4 text-center border rounded-lg border-dashed">No rooms configured yet.</div>}
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {rooms.map(room => {
+                const rt = roomTypes.find(t => t.id === room.roomTypeId);
+                return (
+                  <div key={room.id} className="group relative flex flex-col justify-between p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-emerald-200 transition-all">
+                    
+                    <div className="absolute top-2 right-2 flex opacity-0 group-hover:opacity-100 transition-opacity bg-white shadow-sm rounded border border-gray-100">
+                      <button onClick={() => setEditingRoom(room)} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="w-px bg-gray-100" />
+                      <button onClick={() => handleDelete(room)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Delete">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                          <Bed className="w-4 h-4 text-emerald-700" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-gray-900 leading-tight">{room.roomNumber}</div>
+                          <div className="text-xs font-medium text-emerald-600">{rt?.name || 'Unknown Type'}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 flex flex-col gap-1">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-500">Tariff</span>
+                          <span className="font-bold text-gray-900">{formatINR(room.baseTariff)}</span>
+                        </div>
+                        {room.floor && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-500">Floor</span>
+                            <span className="font-medium text-gray-700">{room.floor}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div className="space-y-1.5 w-24">
-            <label className="text-xs font-medium text-muted-foreground">Floor</label>
-            <Input placeholder="e.g. 1" value={floor} onChange={e => setFloor(e.target.value)} />
-          </div>
-          <div className="space-y-1.5 flex-1">
-            <label className="text-xs font-medium text-muted-foreground">Base Tariff (₹)</label>
-            <Input type="number" placeholder="1500" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} />
-          </div>
-          <Button type="button" onClick={handleAdd} disabled={isPending || !roomNumber || !roomTypeId || !baseTariff} className="w-full md:w-auto">
-            Add Room
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+
+        </CardContent>
+      </Card>
+
+      <EditRoomDialog 
+        room={editingRoom} 
+        open={!!editingRoom} 
+        onOpenChange={(open) => !open && setEditingRoom(null)} 
+      />
+    </>
   );
 }
 
@@ -204,16 +370,16 @@ export function SettingsPage() {
   const { mutateAsync: deleteExpenseCategory } = useDeleteExpenseCategory();
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto pb-12">
       <PageHeader
         icon={Settings}
-        title="Settings"
-        description="Manage the lookup lists used across the app — add a new room type, room, or expense category here and it shows up everywhere immediately, no code change needed."
+        title="Settings & Configuration"
+        description="Manage your hotel's structural data: Rooms, Room Types, and core lookup lists."
       />
 
       <Tabs defaultValue="rooms" className="w-full">
         <TabsList className="mb-6 bg-gray-100 p-1 rounded-xl">
-          <TabsTrigger value="rooms" className="rounded-lg px-6 font-semibold">Room Types</TabsTrigger>
+          <TabsTrigger value="rooms" className="rounded-lg px-6 font-semibold">Rooms Setup</TabsTrigger>
           <TabsTrigger value="lookups" className="rounded-lg px-6 font-semibold">System Lists</TabsTrigger>
         </TabsList>
 
