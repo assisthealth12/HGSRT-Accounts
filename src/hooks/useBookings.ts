@@ -50,7 +50,7 @@ export function useCreateBooking() {
         throw new Error('One or more of the selected rooms are already booked for an overlapping date range.');
       }
 
-      const data = {
+      const data: any = {
         ...booking,
         propertyId,
         createdAt: Date.now(),
@@ -58,6 +58,9 @@ export function useCreateBooking() {
         updatedAt: Date.now(),
         updatedBy: user.uid,
       };
+
+      // Firestore throws an error if any field is undefined. Strip them out.
+      Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
 
       const docRef = await addDoc(collection(db, 'bookings'), data);
       return { id: docRef.id, ...data };
@@ -74,7 +77,8 @@ export function useUpdateBooking() {
 
   return useMutation({
     mutationFn: async ({ id, data, previous }: { id: string; data: z.infer<typeof bookingSchema>; previous: Booking }) => {
-      const updateData = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      const updateData: any = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
       await updateDoc(doc(db, 'bookings', id), updateData);
 
       if (propertyId && user) {

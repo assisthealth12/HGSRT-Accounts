@@ -40,15 +40,18 @@ export function useCreateBanquetBooking() {
       const parsed = banquetBookingSchema.parse(data);
       const newRef = doc(collection(db, 'banquetBookings'));
       
-      const booking: BanquetBooking = {
+      const booking: any = {
         id: newRef.id,
         propertyId,
         ...parsed,
         createdAt: new Date().toISOString(),
       };
-      
+
+      // Firestore throws an error if any field is undefined. Strip them out.
+      Object.keys(booking).forEach(key => booking[key] === undefined && delete booking[key]);
+
       await setDoc(newRef, booking);
-      return booking;
+      return booking as BanquetBooking;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['banquetBookings'] });
@@ -62,7 +65,9 @@ export function useUpdateBanquetBooking() {
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<BanquetBooking> & { id: string }) => {
       const docRef = doc(db, 'banquetBookings', id);
-      await updateDoc(docRef, data);
+      const cleaned: any = { ...data };
+      Object.keys(cleaned).forEach(key => cleaned[key] === undefined && delete cleaned[key]);
+      await updateDoc(docRef, cleaned);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['banquetBookings'] });

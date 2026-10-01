@@ -42,7 +42,8 @@ export function useStaff() {
 
   const updateStaffMutation = useMutation({
     mutationFn: async ({ id, data, previous }: { id: string; data: Partial<Staff>; previous: Staff }) => {
-      const updateData = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      const updateData: any = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
       await updateDoc(doc(db, 'staff', id), updateData);
 
       if (propertyId && user) {

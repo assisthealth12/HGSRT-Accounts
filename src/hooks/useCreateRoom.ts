@@ -17,7 +17,7 @@ export function useCreateRoom() {
     mutationFn: async (newRoom: z.infer<typeof roomSchema>) => {
       if (!propertyId) throw new Error('No property ID');
 
-      const roomData = {
+      const roomData: any = {
         ...newRoom,
         propertyId,
         createdAt: Date.now(),
@@ -25,6 +25,9 @@ export function useCreateRoom() {
         updatedAt: Date.now(),
         updatedBy: user?.uid ?? 'unknown',
       };
+
+      // Firestore throws an error if any field is undefined. Strip them out.
+      Object.keys(roomData).forEach(key => roomData[key] === undefined && delete roomData[key]);
 
       const docRef = await addDoc(collection(db, 'rooms'), roomData);
       return { id: docRef.id, ...roomData };
@@ -43,7 +46,8 @@ export function useUpdateRoom() {
 
   return useMutation({
     mutationFn: async ({ id, data, previous }: { id: string; data: z.infer<typeof roomSchema>; previous: Room }) => {
-      const updateData = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      const updateData: any = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
       await updateDoc(doc(db, 'rooms', id), updateData);
 
       if (propertyId && user) {
