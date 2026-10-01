@@ -65,12 +65,22 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   const nights = nightsBetween(checkIn, checkOut);
   
+  // Addon amount is derived from roomAddons, never stored/typed-over — recompute it
+  // right at the point roomAddons changes instead of via an effect (an effect keyed
+  // on roomAddons would also need to special-case the initial empty state and can
+  // lag a render behind the chip's own visual toggle).
+  const recalcAddonAmount = (updated: Record<string, { id: string; name: string; price: number }[]>) => {
+    const totalAddonsCents = Object.values(updated).flat().reduce((sum, a) => sum + a.price, 0);
+    setAddonAmount(totalAddonsCents > 0 ? ((totalAddonsCents * nights) / 100).toString() : '');
+  };
+
   const toggleRoom = (id: string) => {
     setRoomIds(prev => {
       if (prev.includes(id)) {
         setRoomAddons(curr => {
           const copy = { ...curr };
           delete copy[id];
+          recalcAddonAmount(copy);
           return copy;
         });
         return prev.filter(r => r !== id);
@@ -84,18 +94,13 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     setRoomAddons(prev => {
       const roomAddonList = prev[roomId] || [];
       const isSelected = roomAddonList.some(a => a.id === addon.id);
-      
-      if (isSelected) {
-        return {
-          ...prev,
-          [roomId]: roomAddonList.filter(a => a.id !== addon.id)
-        };
-      } else {
-        return {
-          ...prev,
-          [roomId]: [...roomAddonList, { id: addon.id, name: addon.name, price: addon.price }]
-        };
-      }
+
+      const updated = isSelected
+        ? { ...prev, [roomId]: roomAddonList.filter(a => a.id !== addon.id) }
+        : { ...prev, [roomId]: [...roomAddonList, { id: addon.id, name: addon.name, price: addon.price }] };
+
+      recalcAddonAmount(updated);
+      return updated;
     });
   };
 
@@ -111,19 +116,18 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     }
   }, [roomIds, nights, rooms]);
 
+  // Nights can change (check-in/out edited) after addons are already selected —
+  // keep the addon total in sync with the current selection in that case too.
   useEffect(() => {
-    const totalAddonsCents = Object.values(roomAddons).flat().reduce((sum, addon) => sum + addon.price, 0);
-    if (totalAddonsCents > 0) {
-      setAddonAmount((totalAddonsCents * nights / 100).toString());
-    } else {
-      setAddonAmount('');
-    }
-  }, [roomAddons, nights]);
+    recalcAddonAmount(roomAddons);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nights]);
 
   const tariffCents = Math.round(parseFloat(tariff || '0') * 100);
-  const gstPercentage = parseFloat(gst || '0');
-  const gstCents = Math.round(tariffCents * (gstPercentage / 100));
   const addonCents = Math.round(parseFloat(addonAmount || '0') * 100);
+  const gstPercentage = parseFloat(gst || '0');
+  // GST applies to Tariff + Addons (e.g. extra bed), not Tariff alone.
+  const gstCents = Math.round((tariffCents + addonCents) * (gstPercentage / 100));
   const discountCents = Math.round(parseFloat(discount || '0') * 100);
 
   const total = bookingTotal({
@@ -132,8 +136,15 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     addonAmount: addonCents,
     discount: discountCents,
   });
-  const amountPaidCents = Math.round(parseFloat(amountPaid || '0') * 100);
+  const amountPaidCents = Math.max(0, Math.round(parseFloat(amountPaid || '0') * 100));
   const balance = total - amountPaidCents;
+
+  const handleAmountPaidChange = (value: string) => {
+    // Never allow a negative advance amount.
+    if (value !== '' && parseFloat(value) < 0) return;
+    setAmountPaid(value);
+    if (!value || parseFloat(value) === 0) setPaymentModeId('');
+  };
 
   const reset = () => {
     setGuestName(''); setOccupancy('Single'); setCheckIn(todayISO()); setCheckOut(todayISO());
@@ -325,11 +336,11 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Amount Paid (₹)</Label>
-                <Input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
+                <Input type="number" min="0" value={amountPaid} onChange={(e) => handleAmountPaidChange(e.target.value)} />
               </div>
               <div>
-                <Label>Payment Mode</Label>
-                <Select value={paymentModeId} onValueChange={setPaymentModeId}>
+                <Label>Payment Mode{amountPaidCents === 0 && <span className="text-muted-foreground font-normal"> (no amount paid)</span>}</Label>
+                <Select value={paymentModeId} onValueChange={setPaymentModeId} disabled={amountPaidCents === 0}>
                   <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
                   <SelectContent>
                     {paymentModes.filter(m => m.active).map(m => (

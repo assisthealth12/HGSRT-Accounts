@@ -44,6 +44,11 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
 
   const { data: addons = [] } = useAddons();
 
+  // Set right after a fresh booking load so the nights-recalc effect below knows to
+  // skip its very next run — otherwise it fires on mount/booking-switch with the
+  // previous render's stale roomIds/roomAddons and clobbers the values just loaded.
+  const justLoadedRef = React.useRef(false);
+
   useEffect(() => {
     if (booking) {
       setGuestName(booking.guestName);
@@ -54,11 +59,14 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
       setRoomAddons(booking.roomAddons || {});
       setTariff((booking.tariff / 100).toString());
       setDiscount((booking.discount / 100).toString());
-      const gstPct = booking.tariff > 0 ? Math.round((booking.gst / booking.tariff) * 100) : 0;
+      // GST is applied on Tariff + Addons, so reverse it out using the same base.
+      const gstBase = booking.tariff + (booking.addonAmount || 0);
+      const gstPct = gstBase > 0 ? Math.round((booking.gst / gstBase) * 100) : 0;
       setGst(gstPct.toString());
       setAddonAmount(((booking.addonAmount || 0) / 100).toString());
       setRemarks(booking.remarks || '');
       setError('');
+      justLoadedRef.current = true;
     }
   }, [booking]);
 
@@ -71,18 +79,39 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
 
   const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 1;
   
+  // Tariff and addon amount are both derived from the selected rooms, never
+  // stored/typed-over — recompute them right at the point roomIds/roomAddons
+  // change instead of via an effect, since an effect keyed on them would also
+  // fire on initial booking load and wipe out the saved values before the
+  // user has touched anything.
+  const recalcTariff = (ids: string[]) => {
+    const totalTariffCents = ids.reduce((sum, rId) => {
+      const r = rooms.find(room => room.id === rId);
+      return sum + (r?.baseTariff || 0);
+    }, 0);
+    setTariff(totalTariffCents > 0 ? ((totalTariffCents * nights) / 100).toString() : '');
+  };
+
+  const recalcAddonAmount = (updated: Record<string, { id: string; name: string; price: number }[]>) => {
+    const totalAddonsCents = Object.values(updated).flat().reduce((sum, a) => sum + a.price, 0);
+    setAddonAmount(totalAddonsCents > 0 ? ((totalAddonsCents * nights) / 100).toString() : '0');
+  };
+
   const toggleRoom = (id: string) => {
     setRoomIds(prev => {
+      const updated = prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id];
+
       if (prev.includes(id)) {
         setRoomAddons(curr => {
           const copy = { ...curr };
           delete copy[id];
+          recalcAddonAmount(copy);
           return copy;
         });
-        return prev.filter(r => r !== id);
-      } else {
-        return [...prev, id];
       }
+
+      recalcTariff(updated);
+      return updated;
     });
   };
 
@@ -90,25 +119,33 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
     setRoomAddons(prev => {
       const roomAddonList = prev[roomId] || [];
       const isSelected = roomAddonList.some(a => a.id === addon.id);
-      
-      if (isSelected) {
-        return {
-          ...prev,
-          [roomId]: roomAddonList.filter(a => a.id !== addon.id)
-        };
-      } else {
-        return {
-          ...prev,
-          [roomId]: [...roomAddonList, { id: addon.id, name: addon.name, price: addon.price }]
-        };
-      }
+
+      const updated = isSelected
+        ? { ...prev, [roomId]: roomAddonList.filter(a => a.id !== addon.id) }
+        : { ...prev, [roomId]: [...roomAddonList, { id: addon.id, name: addon.name, price: addon.price }] };
+
+      recalcAddonAmount(updated);
+      return updated;
     });
   };
 
+  // Nights can change (check-in/out edited) after rooms are already selected —
+  // keep the tariff/addon totals in sync with the current selection in that case too.
+  useEffect(() => {
+    if (justLoadedRef.current) {
+      justLoadedRef.current = false;
+      return;
+    }
+    recalcTariff(roomIds);
+    recalcAddonAmount(roomAddons);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nights]);
+
   const tariffCents = Math.round(parseFloat(tariff || '0') * 100);
-  const gstPercentage = parseFloat(gst || '0');
-  const gstCents = Math.round(tariffCents * (gstPercentage / 100));
   const addonCents = Math.round(parseFloat(addonAmount || '0') * 100);
+  const gstPercentage = parseFloat(gst || '0');
+  // GST applies to Tariff + Addons (e.g. extra bed), not Tariff alone.
+  const gstCents = Math.round((tariffCents + addonCents) * (gstPercentage / 100));
   const discountCents = Math.round(parseFloat(discount || '0') * 100);
 
   const total = bookingTotal({

@@ -42,10 +42,18 @@ export function RecordPaymentDialog({
   const total = bookingTotal(booking);
   const received = bookingReceived(payments);
   const pending = bookingPending(booking, payments);
+  const amountCents = Math.max(0, Math.round(parseFloat(amount || '0') * 100));
+
+  const handleAmountChange = (value: string) => {
+    // Never allow a negative payment amount.
+    if (value !== '' && parseFloat(value) < 0) return;
+    setAmount(value);
+    if (!value || parseFloat(value) === 0) setPaymentModeId('');
+  };
 
   const handleSave = async () => {
-    if (!amount || !paymentModeId) return;
-    const amountPaise = Math.round(parseFloat(amount) * 100);
+    if (amountCents === 0 || !paymentModeId) return;
+    const amountPaise = amountCents;
     await recordPayment({
       bookingId: booking.id,
       amount: amountPaise,
@@ -89,11 +97,11 @@ export function RecordPaymentDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Amount (₹)</Label>
-                  <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  <Input type="number" min="0" value={amount} onChange={(e) => handleAmountChange(e.target.value)} />
                 </div>
                 <div>
-                  <Label>Payment Mode</Label>
-                  <Select value={paymentModeId} onValueChange={setPaymentModeId}>
+                  <Label>Payment Mode{amountCents === 0 && <span className="text-muted-foreground font-normal"> (no amount entered)</span>}</Label>
+                  <Select value={paymentModeId} onValueChange={setPaymentModeId} disabled={amountCents === 0}>
                     <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
                     <SelectContent>
                       {paymentModes.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
@@ -115,7 +123,7 @@ export function RecordPaymentDialog({
                 <Label>Notes</Label>
                 <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
-              <Button className="w-full" onClick={handleSave} disabled={isPending}>
+              <Button className="w-full" onClick={handleSave} disabled={isPending || amountCents === 0 || !paymentModeId}>
                 {isPending ? 'Saving...' : 'Add Payment'}
               </Button>
             </div>
