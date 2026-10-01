@@ -101,3 +101,29 @@ export function useUpdateBooking() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bookings', propertyId] }),
   });
 }
+
+export function useDeleteBooking() {
+  const propertyId = useAuthStore((state) => state.propertyId);
+  const user = useAuthStore((state) => state.user);
+  const role = useAuthStore((state) => state.role);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (!propertyId || !user) throw new Error('Not authenticated');
+      await updateDoc(doc(db, 'bookings', id), { deletedAt: Date.now(), deletedBy: user.uid });
+      
+      await logAudit({
+        propertyId,
+        userId: user.uid,
+        userRole: role,
+        action: 'delete',
+        entityType: 'booking',
+        entityId: id,
+        changes: [{ field: 'deletedAt', old: undefined, new: Date.now() }],
+      });
+      return id;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bookings', propertyId] }),
+  });
+}

@@ -10,6 +10,18 @@ export const roomTypeSchema = z.object({
   active: z.boolean().default(true),
 });
 
+export const addonSchema = z.object({
+  name: z.string().min(2, 'Addon name is required'),
+  price: moneySchema,
+  active: z.boolean().default(true),
+});
+
+export const addonSelectedSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  price: moneySchema,
+});
+
 export const roomSchema = z.object({
   roomNumber: z.string().min(1, 'Room number is required'),
   roomTypeId: z.string().min(1, 'Room type is required'),
@@ -22,6 +34,7 @@ export const bookingSchema = z.object({
   guestName: z.string().min(2, 'Guest name is required'),
   occupancy: z.enum(['Single', 'Double', 'Triple']),
   roomIds: z.array(z.string()).min(1, 'At least one room is required'),
+  roomAddons: z.record(z.array(addonSelectedSchema)).optional(),
   checkIn: dateSchema,
   checkOut: dateSchema,
   nights: z.number().int().min(1),

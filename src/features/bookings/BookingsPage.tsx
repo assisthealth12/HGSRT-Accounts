@@ -8,15 +8,17 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR } from '@/domain/money';
 import { Booking, bookingTotal, bookingPending } from '@/domain/booking';
-import { useBookings } from '@/hooks/useBookings';
+import { useBookings, useDeleteBooking } from '@/hooks/useBookings';
 import { usePayments } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
 import { NewBookingDialog } from './NewBookingDialog';
+import { EditBookingDialog } from './EditBookingDialog';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { BedDouble, CalendarDays } from 'lucide-react';
+import { StatCard } from '@/components/shared/StatCard';
+import { BedDouble, CalendarDays, Edit, Trash2, LogIn, LogOut, DoorOpen, TrendingUp } from 'lucide-react';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -27,8 +29,10 @@ function GuestRegisterTab() {
   const { data: bookings = [], isLoading } = useBookings();
   const { data: payments = [] } = usePayments();
   const { data: rooms = [] } = useRooms();
+  const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
   const paymentsByBooking = useMemo(() => {
     const map = new Map<string, typeof payments>();
@@ -36,7 +40,11 @@ function GuestRegisterTab() {
     return map;
   }, [payments]);
 
-  const rowsForDate = bookings.filter(b => b.checkIn <= date && b.checkOut > date);
+  const rowsForDate = bookings.filter(b => b.checkIn <= date && (b.checkOut > date || b.checkIn === date));
+  const arrivalsCount = bookings.filter(b => b.checkIn === date).length;
+  const departuresCount = bookings.filter(b => b.checkOut === date).length;
+  const occupiedRoomsCount = new Set(rowsForDate.flatMap(b => b.roomIds || [])).size;
+  const availableRoomsCount = Math.max(rooms.length - occupiedRoomsCount, 0);
 
   const columns: ColumnDef<Booking>[] = [
     { accessorKey: 'guestName', header: 'Guest' },
@@ -68,7 +76,24 @@ function GuestRegisterTab() {
     {
       id: 'actions',
       cell: ({ row }) => (
-        <Button variant="outline" size="sm" onClick={() => setPayingBooking(row.original)}>Payments</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPayingBooking(row.original)}>Payments</Button>
+          <Button variant="ghost" size="icon" onClick={() => setEditingBooking(row.original)} title="Edit Booking">
+            <Edit className="w-4 h-4 text-gray-500" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this booking?')) {
+                deleteBooking(row.original.id);
+              }
+            }} 
+            title="Delete Booking"
+          >
+            <Trash2 className="w-4 h-4 text-destructive" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -81,6 +106,13 @@ function GuestRegisterTab() {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <Button onClick={() => setIsNewOpen(true)}>New Booking</Button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Arrivals" value={String(arrivalsCount)} tone="primary" icon={LogIn} />
+        <StatCard label="Departures" value={String(departuresCount)} tone="destructive" icon={LogOut} />
+        <StatCard label="Occupied Rooms" value={String(occupiedRoomsCount)} icon={DoorOpen} />
+        <StatCard label="Available Rooms" value={String(availableRoomsCount)} tone="success" icon={BedDouble} />
       </div>
 
       {isLoading ? (
@@ -97,13 +129,17 @@ function GuestRegisterTab() {
       )}
 
       <NewBookingDialog open={isNewOpen} onOpenChange={setIsNewOpen} />
+      <EditBookingDialog booking={editingBooking} onOpenChange={(open) => !open && setEditingBooking(null)} />
       <RecordPaymentDialog booking={payingBooking} onOpenChange={(open) => !open && setPayingBooking(null)} />
     </div>
   );
 }
 
+const MONTHLY_PAGE_SIZE = 10;
+
 function MonthlyRevenueTab() {
   const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [page, setPage] = useState(0);
   const { data: bookings = [] } = useBookings();
   const { data: payments = [] } = usePayments();
 
@@ -135,11 +171,15 @@ function MonthlyRevenueTab() {
     pending: acc.pending + r.pending,
   }), { sales: 0, received: 0, pending: 0 });
 
+  const pageCount = Math.max(1, Math.ceil(rows.length / MONTHLY_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pagedRows = rows.slice(currentPage * MONTHLY_PAGE_SIZE, (currentPage + 1) * MONTHLY_PAGE_SIZE);
+
   return (
     <div className="space-y-4">
       <div className="max-w-xs">
         <Label>Month</Label>
-        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <Input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setPage(0); }} />
       </div>
 
       {rows.length === 0 ? (
@@ -157,7 +197,7 @@ function MonthlyRevenueTab() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {pagedRows.map(r => (
                 <tr key={r.date} className="border-t">
                   <td className="p-2">{r.date}</td>
                   <td className="p-2 text-right">{r.bookingsCount}</td>
@@ -177,6 +217,19 @@ function MonthlyRevenueTab() {
               </tr>
             </tfoot>
           </table>
+          <div className="flex items-center justify-between px-2 py-3 border-t">
+            <div className="text-sm text-muted-foreground">
+              Page {currentPage + 1} of {pageCount} · {rows.length} day{rows.length !== 1 ? 's' : ''}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(p - 1, 0))} disabled={currentPage === 0}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(p + 1, pageCount - 1))} disabled={currentPage >= pageCount - 1}>
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -194,8 +247,8 @@ export function BookingsPage() {
 
       <Tabs defaultValue="register">
         <TabsList className="mb-4">
-          <TabsTrigger value="register">Guest Register</TabsTrigger>
-          <TabsTrigger value="monthly">Monthly Room Revenue</TabsTrigger>
+          <TabsTrigger value="register" className="gap-1.5"><CalendarDays className="w-4 h-4" /> Guest Register</TabsTrigger>
+          <TabsTrigger value="monthly" className="gap-1.5"><TrendingUp className="w-4 h-4" /> Monthly Room Revenue</TabsTrigger>
         </TabsList>
         <TabsContent value="register">
           <GuestRegisterTab />

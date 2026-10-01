@@ -10,37 +10,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatINR } from '@/domain/money';
-import { bookingTotal, datesOverlap, Occupancy } from '@/domain/booking';
+import { Booking, bookingTotal, datesOverlap, Occupancy } from '@/domain/booking';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { useBookings, useCreateBooking } from '@/hooks/useBookings';
-import { usePaymentModes } from '@/hooks/usePaymentModes';
-import { useRecordPayment } from '@/hooks/usePayments';
+import { useBookings, useUpdateBooking } from '@/hooks/useBookings';
 import { useAddons, Addon } from '@/hooks/useAddons';
 import { toast } from '@/hooks/use-toast';
 import { Check, Plus } from 'lucide-react';
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function nightsBetween(checkIn: string, checkOut: string) {
   const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime();
   return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
 }
 
-export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking | null; onOpenChange: (open: boolean) => void }) {
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
   const { data: bookings = [] } = useBookings();
-  const { data: paymentModes = [] } = usePaymentModes();
-  const { mutateAsync: createBooking, isPending } = useCreateBooking();
-  const { mutateAsync: recordPayment, isPending: isPaymentPending } = useRecordPayment();
+  const { mutateAsync: updateBooking, isPending } = useUpdateBooking();
 
   const [guestName, setGuestName] = useState('');
   const [occupancy, setOccupancy] = useState<Occupancy>('Single');
-  const [checkIn, setCheckIn] = useState(todayISO());
-  const [checkOut, setCheckOut] = useState(todayISO());
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
   const [roomIds, setRoomIds] = useState<string[]>([]);
   const [roomAddons, setRoomAddons] = useState<Record<string, { id: string; name: string; price: number }[]>>({});
   const [tariff, setTariff] = useState('');
@@ -48,22 +40,36 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [gst, setGst] = useState('');
   const [addonAmount, setAddonAmount] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
-  const [paymentModeId, setPaymentModeId] = useState('');
-  const [paidOn, setPaidOn] = useState(todayISO());
-  const [referenceNo, setReferenceNo] = useState('');
   const [error, setError] = useState('');
 
   const { data: addons = [] } = useAddons();
 
+  useEffect(() => {
+    if (booking) {
+      setGuestName(booking.guestName);
+      setOccupancy(booking.occupancy);
+      setCheckIn(booking.checkIn);
+      setCheckOut(booking.checkOut);
+      setRoomIds(booking.roomIds || []);
+      setRoomAddons(booking.roomAddons || {});
+      setTariff((booking.tariff / 100).toString());
+      setDiscount((booking.discount / 100).toString());
+      const gstPct = booking.tariff > 0 ? Math.round((booking.gst / booking.tariff) * 100) : 0;
+      setGst(gstPct.toString());
+      setAddonAmount(((booking.addonAmount || 0) / 100).toString());
+      setRemarks(booking.remarks || '');
+      setError('');
+    }
+  }, [booking]);
+
   const availableRooms = useMemo(() => {
     return rooms.filter(room => {
-      const conflict = bookings.some(b => b.roomIds?.includes(room.id) && datesOverlap(checkIn, checkOut, b.checkIn, b.checkOut));
+      const conflict = bookings.some(b => b.id !== booking?.id && b.roomIds?.includes(room.id) && datesOverlap(checkIn, checkOut, b.checkIn, b.checkOut));
       return !conflict;
     });
-  }, [rooms, bookings, checkIn, checkOut]);
+  }, [rooms, bookings, checkIn, checkOut, booking?.id]);
 
-  const nights = nightsBetween(checkIn, checkOut);
+  const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 1;
   
   const toggleRoom = (id: string) => {
     setRoomIds(prev => {
@@ -99,27 +105,6 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     });
   };
 
-  useEffect(() => {
-    const totalTariffCents = roomIds.reduce((sum, rId) => {
-      const r = rooms.find(room => room.id === rId);
-      return sum + (r?.baseTariff || 0);
-    }, 0);
-    if (totalTariffCents > 0) {
-      setTariff((totalTariffCents * nights / 100).toString());
-    } else {
-      setTariff('');
-    }
-  }, [roomIds, nights, rooms]);
-
-  useEffect(() => {
-    const totalAddonsCents = Object.values(roomAddons).flat().reduce((sum, addon) => sum + addon.price, 0);
-    if (totalAddonsCents > 0) {
-      setAddonAmount((totalAddonsCents * nights / 100).toString());
-    } else {
-      setAddonAmount('');
-    }
-  }, [roomAddons, nights]);
-
   const tariffCents = Math.round(parseFloat(tariff || '0') * 100);
   const gstPercentage = parseFloat(gst || '0');
   const gstCents = Math.round(tariffCents * (gstPercentage / 100));
@@ -132,67 +117,46 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     addonAmount: addonCents,
     discount: discountCents,
   });
-  const amountPaidCents = Math.round(parseFloat(amountPaid || '0') * 100);
-  const balance = total - amountPaidCents;
-
-  const reset = () => {
-    setGuestName(''); setOccupancy('Single'); setCheckIn(todayISO()); setCheckOut(todayISO());
-    setRoomIds([]); setRoomAddons({}); setTariff(''); setDiscount(''); setGst(''); setAddonAmount(''); setRemarks(''); 
-    setAmountPaid(''); setPaymentModeId(''); setPaidOn(todayISO()); setReferenceNo(''); setError('');
-  };
 
   const handleSave = async () => {
+    if (!booking) return;
     setError('');
     if (!guestName.trim() || roomIds.length === 0 || !tariff) {
       setError('Guest name, at least one room, and tariff are required.');
       return;
     }
     
-    if (amountPaidCents > 0 && !paymentModeId) {
-      setError('Please select a payment mode for the amount paid.');
-      return;
-    }
-    
     try {
-      const created = await createBooking({
-        guestName: guestName.trim(),
-        occupancy,
-        roomIds,
-        roomAddons,
-        checkIn,
-        checkOut,
-        nights,
-        tariff: tariffCents,
-        gst: gstCents,
-        addonAmount: addonCents,
-        discount: discountCents,
-        remarks: remarks.trim() || undefined,
+      await updateBooking({
+        id: booking.id,
+        previous: booking,
+        data: {
+          guestName: guestName.trim(),
+          occupancy,
+          roomIds,
+          roomAddons,
+          checkIn,
+          checkOut,
+          nights,
+          tariff: tariffCents,
+          gst: gstCents,
+          addonAmount: addonCents,
+          discount: discountCents,
+          remarks: remarks.trim() || undefined,
+        }
       });
-
-      if (amountPaidCents > 0) {
-        await recordPayment({
-          bookingId: created.id,
-          amount: amountPaidCents,
-          paymentModeId,
-          paidOn: paidOn,
-          referenceNo: referenceNo.trim() || undefined,
-          notes: 'Advance Payment',
-        });
-      }
-
-      toast({ title: 'Booking created', description: `${guestName.trim()} — ${formatINR(total)}` });
-      reset();
+      toast({ title: 'Booking updated', description: `${guestName.trim()} — ${formatINR(total)}` });
       onOpenChange(false);
     } catch (e: any) {
-      setError(e?.message || 'Failed to create booking');
+      setError(e?.message || 'Failed to update booking');
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
+    <Dialog open={!!booking} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Booking</DialogTitle>
+          <DialogTitle>Edit Booking</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -319,54 +283,16 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
             <Label>Remarks (optional)</Label>
             <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           </div>
-          
-          <div className="pt-4 border-t">
-            <h3 className="font-semibold mb-3">Advance Payment (optional)</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Amount Paid (₹)</Label>
-                <Input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
-              </div>
-              <div>
-                <Label>Payment Mode</Label>
-                <Select value={paymentModeId} onValueChange={setPaymentModeId}>
-                  <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
-                  <SelectContent>
-                    {paymentModes.filter(m => m.active).map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Paid On</Label>
-                <Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
-              </div>
-              <div>
-                <Label>Transaction ID</Label>
-                <Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Optional" />
-              </div>
-            </div>
-          </div>
 
-          <div className="flex justify-between items-center pt-2 border-t">
+          <div className="flex justify-between items-center pt-4 border-t">
             <div>
               <div className="text-sm text-muted-foreground">{nights} night(s) &bull; {roomIds.length} room(s)</div>
-              <div className="text-sm font-semibold">Total: {formatINR(total)}</div>
-              {amountPaidCents > 0 && (
-                <div className="text-sm text-muted-foreground">Paid: {formatINR(amountPaidCents)}</div>
-              )}
-              {discountCents > 0 && (
-                <div className="text-sm text-muted-foreground">Discount: {formatINR(discountCents)}</div>
-              )}
-              <div className={`text-lg font-bold ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                Balance: {formatINR(balance)}
-              </div>
+              <div className="text-lg font-bold">Total: {formatINR(total)}</div>
             </div>
             {error && <div className="text-sm text-destructive">{error}</div>}
           </div>
-          <Button className="w-full" onClick={handleSave} disabled={isPending || isPaymentPending}>
-            {isPending || isPaymentPending ? 'Saving...' : 'Save Booking'}
+          <Button className="w-full" onClick={handleSave} disabled={isPending}>
+            {isPending ? 'Saving...' : 'Update Booking'}
           </Button>
         </div>
       </DialogContent>

@@ -46,6 +46,12 @@ service cloud.firestore {
       allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
     }
 
+    match /addons/{id} {
+      allow read: if isManager() && isFromProperty(resource.data.propertyId);
+      allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);
+      allow delete: if isAdmin() && isFromProperty(resource.data.propertyId);
+    }
+
     match /expenseCategories/{id} {
       allow read: if isManager() && isFromProperty(resource.data.propertyId);
       allow create, update: if isManager() && isCreatingForProperty(request.resource.data.propertyId);

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useExpenseCategories, useCreateExpenseCategory, useDeleteExpenseCategory } from '@/hooks/useExpenseCategories';
+import { useAddons, useCreateAddon, useDeleteAddon } from '@/hooks/useAddons';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useCreateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
 import { useRooms } from '@/hooks/useRooms';
@@ -78,6 +79,65 @@ function SimpleLookupCard({
                 className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
                 onClick={() => handleDelete(item)}
                 aria-label={`Remove ${item.name}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AddonsCard() {
+  const { data: addons = [] } = useAddons();
+  const { mutateAsync: createAddon, isPending } = useCreateAddon();
+  const { mutateAsync: deleteAddon } = useDeleteAddon();
+  
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+
+  const handleAdd = async () => {
+    if (!name.trim() || !price) return;
+    await createAddon({ name: name.trim(), price: Math.round(parseFloat(price) * 100) });
+    setName('');
+    setPrice('');
+  };
+
+  const handleDelete = async (addon: any) => {
+    const ok = await confirmAction({ title: 'Delete Addon', description: `Are you sure you want to delete ${addon.name}?` });
+    if (ok) {
+      await deleteAddon(addon);
+      toast({ title: 'Deleted', description: `${addon.name} removed successfully.` });
+    }
+  };
+
+  return (
+    <Card className="shadow-sm border-gray-200">
+      <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4">
+        <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-gray-500" /> Addons</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-6">
+        <div className="flex gap-3 items-center w-full max-w-lg">
+          <Input placeholder="Addon Name (e.g. Extra Bed)" value={name} onChange={(e) => setName(e.target.value)} className="h-11 flex-1" />
+          <Input type="number" placeholder="Price (₹)" value={price} onChange={(e) => setPrice(e.target.value)} className="h-11 w-32" />
+          <Button type="button" onClick={handleAdd} disabled={isPending || !name.trim() || !price} className="h-11 px-6">
+            <Plus className="w-4 h-4 mr-2" />
+            Add
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {addons.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
+          {addons.map(addon => (
+            <div key={addon.id} className="flex items-center gap-2 py-2 px-4 rounded-xl text-sm font-medium bg-white border border-gray-200 shadow-sm">
+              <span className="text-gray-700">{addon.name}</span>
+              <span className="text-emerald-600 font-bold">{formatINR(addon.price)}</span>
+              <div className="w-px h-4 bg-gray-200 mx-1" />
+              <button
+                type="button"
+                className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                onClick={() => handleDelete(addon)}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -389,6 +449,7 @@ export function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="lookups" className="mt-0 space-y-6">
+          <AddonsCard />
           <SimpleLookupCard
             title="Expense Categories"
             items={expenseCategories}

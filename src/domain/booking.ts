@@ -7,6 +7,7 @@ export interface Booking extends BaseDocument {
   guestName: string;
   occupancy: Occupancy;
   roomIds: string[];
+  roomAddons?: Record<string, { id: string; name: string; price: number }[]>;
   checkIn: string; // YYYY-MM-DD
   checkOut: string; // YYYY-MM-DD
   nights: number;

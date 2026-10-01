@@ -5,14 +5,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatINR } from '@/domain/money';
 import { Booking, bookingTotal, bookingReceived, bookingPending } from '@/domain/booking';
-import { useBookings } from '@/hooks/useBookings';
+import { useBookings, useDeleteBooking } from '@/hooks/useBookings';
 import { usePayments } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
+import { EditBookingDialog } from './EditBookingDialog';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { AlertCircle, PartyPopper } from 'lucide-react';
+import { AlertCircle, PartyPopper, Edit, Trash2 } from 'lucide-react';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -35,7 +36,9 @@ export function PendingDuesPage() {
   const { data: bookings = [], isLoading: isLoadingBookings } = useBookings();
   const { data: payments = [], isLoading: isLoadingPayments } = usePayments();
   const { data: rooms = [] } = useRooms();
+  const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
   const isLoading = isLoadingBookings || isLoadingPayments;
 
@@ -92,9 +95,26 @@ export function PendingDuesPage() {
     {
       id: 'actions',
       cell: ({ row }) => (
-        <Button variant="outline" size="sm" onClick={() => setPayingBooking(row.original.booking)}>
-          Record Payment
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPayingBooking(row.original.booking)}>
+            Record Payment
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setEditingBooking(row.original.booking)} title="Edit Booking">
+            <Edit className="w-4 h-4 text-gray-500" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this booking?')) {
+                deleteBooking(row.original.booking.id);
+              }
+            }} 
+            title="Delete Booking"
+          >
+            <Trash2 className="w-4 h-4 text-destructive" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -121,6 +141,7 @@ export function PendingDuesPage() {
         <DataTable columns={columns} data={rows} />
       )}
 
+      <EditBookingDialog booking={editingBooking} onOpenChange={(open) => !open && setEditingBooking(null)} />
       <RecordPaymentDialog booking={payingBooking} onOpenChange={(open) => !open && setPayingBooking(null)} />
     </div>
   );
