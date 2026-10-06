@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
-import { RoomType } from '@/domain/room';
+import { RoomType, OccupancyRates } from '@/domain/room';
+import { diffFields } from '@/domain/audit';
 import { logAudit } from '@/lib/audit';
 
 export function useCreateRoomType() {
@@ -11,7 +12,7 @@ export function useCreateRoomType() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (roomType: { name: string; sortOrder: number }) => {
+    mutationFn: async (roomType: { name: string; sortOrder: number; rates?: OccupancyRates }) => {
       if (!propertyId) throw new Error('No property ID');
       const data = {
         ...roomType,
@@ -24,6 +25,38 @@ export function useCreateRoomType() {
       };
       const docRef = await addDoc(collection(db, 'roomTypes'), data);
       return { id: docRef.id, ...data };
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roomTypes', propertyId] }),
+  });
+}
+
+export function useUpdateRoomType() {
+  const propertyId = useAuthStore((state) => state.propertyId);
+  const user = useAuthStore((state) => state.user);
+  const role = useAuthStore((state) => state.role);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data, previous }: { id: string; data: { name: string; rates?: OccupancyRates }; previous: RoomType }) => {
+      const updateData = { ...data, updatedAt: Date.now(), updatedBy: user?.uid ?? 'unknown' };
+      await updateDoc(doc(db, 'roomTypes', id), updateData);
+
+      if (propertyId && user) {
+        const changes = diffFields(previous, { ...previous, ...updateData });
+        if (changes.length > 0) {
+          await logAudit({
+            propertyId,
+            userId: user.uid,
+            userRole: role,
+            action: 'edit',
+            entityType: 'roomType',
+            entityId: id,
+            changes,
+          });
+        }
+      }
+
+      return { id, ...updateData };
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roomTypes', propertyId] }),
   });

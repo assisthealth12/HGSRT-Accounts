@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatINR } from '@/domain/money';
 import { bookingTotal, datesOverlap, Occupancy } from '@/domain/booking';
+import { rateFor, mealPlanDeltaFor, MealPlan } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useBookings, useCreateBooking } from '@/hooks/useBookings';
@@ -39,6 +40,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   const [guestName, setGuestName] = useState('');
   const [occupancy, setOccupancy] = useState<Occupancy>('Single');
+  const [mealPlan, setMealPlan] = useState<MealPlan>('EP');
   const [checkIn, setCheckIn] = useState(todayISO());
   const [checkOut, setCheckOut] = useState(todayISO());
   const [roomIds, setRoomIds] = useState<string[]>([]);
@@ -47,6 +49,8 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [discount, setDiscount] = useState('');
   const [gst, setGst] = useState('');
   const [addonAmount, setAddonAmount] = useState('');
+  const [mealPlanAmount, setMealPlanAmount] = useState('');
+  const [mealPlanGstPercent, setMealPlanGstPercent] = useState('');
   const [remarks, setRemarks] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [paymentModeId, setPaymentModeId] = useState('');
@@ -104,17 +108,35 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     });
   };
 
+  // Tariff is looked up per room from its Room Type's rate matrix (by occupancy +
+  // meal plan), falling back to the room's flat Base Tariff if that type has no
+  // rates configured yet.
   useEffect(() => {
     const totalTariffCents = roomIds.reduce((sum, rId) => {
       const r = rooms.find(room => room.id === rId);
-      return sum + (r?.baseTariff || 0);
+      if (!r) return sum;
+      const rt = roomTypes.find(t => t.id === r.roomTypeId);
+      return sum + rateFor(rt, occupancy, mealPlan, r.baseTariff);
     }, 0);
-    if (totalTariffCents > 0) {
-      setTariff((totalTariffCents * nights / 100).toString());
-    } else {
-      setTariff('');
+    setTariff(totalTariffCents > 0 ? (totalTariffCents * nights / 100).toString() : '');
+  }, [roomIds, nights, rooms, roomTypes, occupancy, mealPlan]);
+
+  // When CP (Room + Breakfast) is picked, suggest the Meal Plan Allocation as the
+  // CP−EP rate difference across selected rooms — still a plain editable field,
+  // so staff can adjust it afterward. Switching back to EP clears the suggestion.
+  useEffect(() => {
+    if (mealPlan !== 'CP') {
+      setMealPlanAmount('');
+      return;
     }
-  }, [roomIds, nights, rooms]);
+    const totalDeltaCents = roomIds.reduce((sum, rId) => {
+      const r = rooms.find(room => room.id === rId);
+      if (!r) return sum;
+      const rt = roomTypes.find(t => t.id === r.roomTypeId);
+      return sum + mealPlanDeltaFor(rt, occupancy);
+    }, 0);
+    setMealPlanAmount(totalDeltaCents > 0 ? (totalDeltaCents * nights / 100).toString() : '');
+  }, [roomIds, nights, rooms, roomTypes, occupancy, mealPlan]);
 
   // Nights can change (check-in/out edited) after addons are already selected —
   // keep the addon total in sync with the current selection in that case too.
@@ -129,12 +151,17 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   // GST applies to Tariff + Addons (e.g. extra bed), not Tariff alone.
   const gstCents = Math.round((tariffCents + addonCents) * (gstPercentage / 100));
   const discountCents = Math.round(parseFloat(discount || '0') * 100);
+  const mealPlanAmountCents = Math.round(parseFloat(mealPlanAmount || '0') * 100);
+  const mealPlanGstPercentage = parseFloat(mealPlanGstPercent || '0');
+  const mealPlanGstCents = Math.round(mealPlanAmountCents * (mealPlanGstPercentage / 100));
 
   const total = bookingTotal({
     tariff: tariffCents,
     gst: gstCents,
     addonAmount: addonCents,
     discount: discountCents,
+    mealPlanAmount: mealPlanAmountCents,
+    mealPlanGst: mealPlanGstCents,
   });
   const amountPaidCents = Math.max(0, Math.round(parseFloat(amountPaid || '0') * 100));
   const balance = total - amountPaidCents;
@@ -147,8 +174,9 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   };
 
   const reset = () => {
-    setGuestName(''); setOccupancy('Single'); setCheckIn(todayISO()); setCheckOut(todayISO());
-    setRoomIds([]); setRoomAddons({}); setTariff(''); setDiscount(''); setGst(''); setAddonAmount(''); setRemarks(''); 
+    setGuestName(''); setOccupancy('Single'); setMealPlan('EP'); setCheckIn(todayISO()); setCheckOut(todayISO());
+    setRoomIds([]); setRoomAddons({}); setTariff(''); setDiscount(''); setGst(''); setAddonAmount('');
+    setMealPlanAmount(''); setMealPlanGstPercent(''); setRemarks('');
     setAmountPaid(''); setPaymentModeId(''); setPaidOn(todayISO()); setReferenceNo(''); setError('');
   };
 
@@ -168,6 +196,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
       const created = await createBooking({
         guestName: guestName.trim(),
         occupancy,
+        mealPlan,
         roomIds,
         roomAddons,
         checkIn,
@@ -176,6 +205,8 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
         tariff: tariffCents,
         gst: gstCents,
         addonAmount: addonCents,
+        mealPlanAmount: mealPlanAmountCents,
+        mealPlanGst: mealPlanGstCents,
         discount: discountCents,
         remarks: remarks.trim() || undefined,
       });
@@ -232,8 +263,18 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Meal Plan</Label>
+              <Select value={mealPlan} onValueChange={(v) => setMealPlan(v as MealPlan)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EP">Room Only (EP)</SelectItem>
+                  <SelectItem value="CP">Room + Breakfast (CP)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label>Rooms</Label>
@@ -248,7 +289,8 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto p-1 pr-2">
                 {availableRooms.map(r => {
                   const isSelected = roomIds.includes(r.id);
-                  const rt = roomTypes.find(t => t.id === r.roomTypeId)?.name;
+                  const rt = roomTypes.find(t => t.id === r.roomTypeId);
+                  const rate = rateFor(rt, occupancy, mealPlan, r.baseTariff);
 
                   return (
                     <button
@@ -267,8 +309,8 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
                         </div>
                       )}
                       <span className="font-bold text-gray-900 text-base leading-tight">{r.roomNumber}</span>
-                      <span className="text-[11px] text-gray-500 leading-tight truncate w-full">{rt}</span>
-                      <span className="text-[11px] font-medium text-gray-600 leading-tight">{formatINR(r.baseTariff)}</span>
+                      <span className="text-[11px] text-gray-500 leading-tight truncate w-full">{rt?.name}</span>
+                      <span className="text-[11px] font-medium text-gray-600 leading-tight">{formatINR(rate)}</span>
                     </button>
                   );
                 })}
@@ -326,11 +368,29 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
               <Input type="number" value={addonAmount} onChange={(e) => setAddonAmount(e.target.value)} />
             </div>
           </div>
+          <div className="border rounded-xl p-3 bg-muted/20">
+            <Label className="block mb-2">Meal Plan Allocation (optional)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Auto-filled from the CP−EP rate difference when Meal Plan above is set to "Room + Breakfast" — adjust
+              freely. Feeds into Restaurant Sales as meal plan allocation, and is part of this guest's single bill below.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Meal Plan Amount (₹)</Label>
+                <Input type="number" min="0" value={mealPlanAmount} onChange={(e) => setMealPlanAmount(e.target.value)} />
+              </div>
+              <div>
+                <Label>Meal Plan GST (%)</Label>
+                <Input type="number" min="0" value={mealPlanGstPercent} onChange={(e) => setMealPlanGstPercent(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
           <div>
             <Label>Remarks (optional)</Label>
             <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           </div>
-          
+
           <div className="pt-4 border-t">
             <h3 className="font-semibold mb-3">Advance Payment (optional)</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -369,6 +429,9 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
               )}
               {discountCents > 0 && (
                 <div className="text-sm text-muted-foreground">Discount: {formatINR(discountCents)}</div>
+              )}
+              {mealPlanAmountCents > 0 && (
+                <div className="text-sm text-muted-foreground">Meal Plan: {formatINR(mealPlanAmountCents + mealPlanGstCents)}</div>
               )}
               <div className={`text-lg font-bold ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
                 Balance: {formatINR(balance)}

@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { useExpenseCategories, useCreateExpenseCategory, useDeleteExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useAddons, useCreateAddon, useDeleteAddon } from '@/hooks/useAddons';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { useCreateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
+import { useCreateRoomType, useUpdateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
+import { RoomType, OccupancyRates } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useCreateRoom, useUpdateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -149,19 +150,126 @@ function AddonsCard() {
   );
 }
 
-function RoomTypesCard() {
-  const { data: roomTypes = [] } = useRoomTypes();
-  const { mutateAsync: createRoomType, isPending } = useCreateRoomType();
-  const { mutateAsync: deleteRoomType } = useDeleteRoomType();
-  const [name, setName] = useState('');
+const EMPTY_RATES: OccupancyRates = {
+  singleEP: 0, singleCP: 0, doubleEP: 0, doubleCP: 0, tripleEP: 0, tripleCP: 0,
+};
 
-  const handleAdd = async () => {
+const RATE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
+  { key: 'singleEP', label: 'Single — Room Only (EP)' },
+  { key: 'singleCP', label: 'Single — Room + Breakfast (CP)' },
+  { key: 'doubleEP', label: 'Double — Room Only (EP)' },
+  { key: 'doubleCP', label: 'Double — Room + Breakfast (CP)' },
+  { key: 'tripleEP', label: 'Triple — Room Only (EP)' },
+  { key: 'tripleCP', label: 'Triple — Room + Breakfast (CP)' },
+];
+
+function RoomTypeFormDialog({
+  roomType,
+  open,
+  onOpenChange,
+  sortOrder,
+}: {
+  roomType: RoomType | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sortOrder: number;
+}) {
+  const { mutateAsync: createRoomType, isPending: isCreating } = useCreateRoomType();
+  const { mutateAsync: updateRoomType, isPending: isUpdating } = useUpdateRoomType();
+
+  const [name, setName] = useState('');
+  const [rates, setRates] = useState<Record<keyof OccupancyRates, string>>({
+    singleEP: '', singleCP: '', doubleEP: '', doubleCP: '', tripleEP: '', tripleCP: '',
+  });
+
+  React.useEffect(() => {
+    if (open) {
+      setName(roomType?.name ?? '');
+      const r = roomType?.rates ?? EMPTY_RATES;
+      setRates({
+        singleEP: r.singleEP ? String(r.singleEP / 100) : '',
+        singleCP: r.singleCP ? String(r.singleCP / 100) : '',
+        doubleEP: r.doubleEP ? String(r.doubleEP / 100) : '',
+        doubleCP: r.doubleCP ? String(r.doubleCP / 100) : '',
+        tripleEP: r.tripleEP ? String(r.tripleEP / 100) : '',
+        tripleCP: r.tripleCP ? String(r.tripleCP / 100) : '',
+      });
+    }
+  }, [open, roomType]);
+
+  const isPending = isCreating || isUpdating;
+
+  const handleSave = async () => {
     if (!name.trim()) return;
-    await createRoomType({ name: name.trim(), sortOrder: roomTypes.length });
-    setName('');
+    const ratesPayload: OccupancyRates = {
+      singleEP: Math.round(parseFloat(rates.singleEP || '0') * 100),
+      singleCP: Math.round(parseFloat(rates.singleCP || '0') * 100),
+      doubleEP: Math.round(parseFloat(rates.doubleEP || '0') * 100),
+      doubleCP: Math.round(parseFloat(rates.doubleCP || '0') * 100),
+      tripleEP: Math.round(parseFloat(rates.tripleEP || '0') * 100),
+      tripleCP: Math.round(parseFloat(rates.tripleCP || '0') * 100),
+    };
+
+    if (roomType) {
+      await updateRoomType({ id: roomType.id, data: { name: name.trim(), rates: ratesPayload }, previous: roomType });
+      toast({ title: 'Room type updated', description: name.trim() });
+    } else {
+      await createRoomType({ name: name.trim(), sortOrder, rates: ratesPayload });
+      toast({ title: 'Room type added', description: name.trim() });
+    }
+    onOpenChange(false);
   };
 
-  const handleDelete = async (rt: any) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{roomType ? 'Edit Room Type' : 'Add Room Type'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <Label className="block mb-2">Rates (₹ per night, optional)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Leave any rate blank/0 if this room type doesn't offer that option. Rooms of this type with no
+              rates set at all will keep using their individual Base Tariff instead.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {RATE_FIELDS.map(f => (
+                <div key={f.key}>
+                  <Label className="text-xs">{f.label}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={rates[f.key]}
+                    onChange={(e) => setRates(r => ({ ...r, [f.key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={isPending || !name.trim()}>
+            {isPending ? 'Saving...' : 'Save Room Type'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RoomTypesCard() {
+  const { data: roomTypes = [] } = useRoomTypes();
+  const { mutateAsync: deleteRoomType } = useDeleteRoomType();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingType, setEditingType] = useState<RoomType | null>(null);
+
+  const handleDelete = async (rt: RoomType) => {
     const ok = await confirmAction({ title: 'Delete Room Type', description: `Are you sure you want to delete ${rt.name}?` });
     if (ok) {
       await deleteRoomType(rt);
@@ -171,35 +279,49 @@ function RoomTypesCard() {
 
   return (
     <Card className="shadow-sm border-gray-200">
-      <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4">
-        <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-gray-500" /> Room Types</CardTitle>
+      <CardHeader className="bg-gray-50/50 border-b border-gray-100 py-4 flex flex-row items-center justify-between">
+        <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-gray-500" /> Room Types & Rates</CardTitle>
+        <Button type="button" size="sm" onClick={() => { setEditingType(null); setIsDialogOpen(true); }}>
+          <Plus className="w-4 h-4 mr-2" /> Add Type
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-6 pt-6">
-        <div className="flex gap-3 items-center w-full max-w-md">
-          <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} className="h-11" />
-          <Button type="button" onClick={handleAdd} disabled={isPending || !name.trim()} className="h-11 px-6">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Type
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {roomTypes.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
-          {roomTypes.map(rt => (
-            <div key={rt.id} className="flex items-center gap-2 py-2 px-4 rounded-xl text-sm font-bold bg-blue-50/50 border border-blue-100 text-blue-800 shadow-sm">
-              <span>{rt.name}</span>
-              <div className="w-px h-4 bg-blue-200 mx-1" />
-              <button
-                type="button"
-                className="text-blue-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
-                onClick={() => handleDelete(rt)}
-                aria-label={`Remove ${rt.name}`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+      <CardContent className="space-y-3 pt-6">
+        {roomTypes.length === 0 && <span className="text-muted-foreground text-sm">None added yet.</span>}
+        {roomTypes.map(rt => (
+          <div key={rt.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-bold text-gray-900">{rt.name}</span>
+              <div className="flex items-center gap-1">
+                <button type="button" className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" onClick={() => { setEditingType(rt); setIsDialogOpen(true); }}>
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button type="button" className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" onClick={() => handleDelete(rt)}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+            {rt.rates ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                <div className="text-gray-500">Single EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.singleEP)}</span></div>
+                <div className="text-gray-500">Single CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.singleCP)}</span></div>
+                <div className="text-gray-500">Double EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.doubleEP)}</span></div>
+                <div className="text-gray-500">Double CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.doubleCP)}</span></div>
+                <div className="text-gray-500">Triple EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.tripleEP)}</span></div>
+                <div className="text-gray-500">Triple CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.tripleCP)}</span></div>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">No rates set — rooms of this type use their individual Base Tariff.</span>
+            )}
+          </div>
+        ))}
       </CardContent>
+
+      <RoomTypeFormDialog
+        roomType={editingType}
+        open={isDialogOpen}
+        onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingType(null); }}
+        sortOrder={roomTypes.length}
+      />
     </Card>
   );
 }

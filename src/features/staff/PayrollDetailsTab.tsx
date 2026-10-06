@@ -25,7 +25,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from '@/hooks/use-toast';
-import { Wallet, Users } from 'lucide-react';
+import { Wallet, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -79,6 +79,18 @@ export function PayrollDetailsTab() {
 
   const isLoading = isLoadingStaff || isLoadingPayments;
 
+  // Pagination Logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+  const totalPages = Math.ceil(rows.length / itemsPerPage);
+  const paginatedRows = rows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 w-full max-w-xs">
@@ -107,7 +119,7 @@ export function PayrollDetailsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
-                {rows.map(r => (
+                {paginatedRows.map(r => (
                   <tr key={r.staff.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-bold text-gray-900">{r.staff.name}</div>
@@ -152,6 +164,38 @@ export function PayrollDetailsTab() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+              <div className="text-sm text-gray-500">
+                Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, rows.length)}</span> of <span className="font-medium">{rows.length}</span> staff
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <div className="text-sm font-medium text-gray-700 px-2">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

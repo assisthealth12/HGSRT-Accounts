@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatINR } from '@/domain/money';
 import { Booking, bookingTotal, datesOverlap, Occupancy } from '@/domain/booking';
+import { rateFor, mealPlanDeltaFor, MealPlan } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useBookings, useUpdateBooking } from '@/hooks/useBookings';
@@ -31,6 +32,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
 
   const [guestName, setGuestName] = useState('');
   const [occupancy, setOccupancy] = useState<Occupancy>('Single');
+  const [mealPlan, setMealPlan] = useState<MealPlan>('EP');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [roomIds, setRoomIds] = useState<string[]>([]);
@@ -39,6 +41,8 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
   const [discount, setDiscount] = useState('');
   const [gst, setGst] = useState('');
   const [addonAmount, setAddonAmount] = useState('');
+  const [mealPlanAmount, setMealPlanAmount] = useState('');
+  const [mealPlanGstPercent, setMealPlanGstPercent] = useState('');
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState('');
 
@@ -53,6 +57,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
     if (booking) {
       setGuestName(booking.guestName);
       setOccupancy(booking.occupancy);
+      setMealPlan(booking.mealPlan || 'EP');
       setCheckIn(booking.checkIn);
       setCheckOut(booking.checkOut);
       setRoomIds(booking.roomIds || []);
@@ -64,6 +69,10 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
       const gstPct = gstBase > 0 ? Math.round((booking.gst / gstBase) * 100) : 0;
       setGst(gstPct.toString());
       setAddonAmount(((booking.addonAmount || 0) / 100).toString());
+      setMealPlanAmount(((booking.mealPlanAmount || 0) / 100).toString());
+      const mealPlanBase = booking.mealPlanAmount || 0;
+      const mealPlanGstPct = mealPlanBase > 0 ? Math.round(((booking.mealPlanGst || 0) / mealPlanBase) * 100) : 0;
+      setMealPlanGstPercent(mealPlanGstPct.toString());
       setRemarks(booking.remarks || '');
       setError('');
       justLoadedRef.current = true;
@@ -87,9 +96,27 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
   const recalcTariff = (ids: string[]) => {
     const totalTariffCents = ids.reduce((sum, rId) => {
       const r = rooms.find(room => room.id === rId);
-      return sum + (r?.baseTariff || 0);
+      if (!r) return sum;
+      const rt = roomTypes.find(t => t.id === r.roomTypeId);
+      return sum + rateFor(rt, occupancy, mealPlan, r.baseTariff);
     }, 0);
     setTariff(totalTariffCents > 0 ? ((totalTariffCents * nights) / 100).toString() : '');
+  };
+
+  // When CP (Room + Breakfast) is picked, suggest the Meal Plan Allocation as the
+  // CP−EP rate difference across selected rooms — still a plain editable field.
+  const recalcMealPlanSuggestion = (ids: string[]) => {
+    if (mealPlan !== 'CP') {
+      setMealPlanAmount('0');
+      return;
+    }
+    const totalDeltaCents = ids.reduce((sum, rId) => {
+      const r = rooms.find(room => room.id === rId);
+      if (!r) return sum;
+      const rt = roomTypes.find(t => t.id === r.roomTypeId);
+      return sum + mealPlanDeltaFor(rt, occupancy);
+    }, 0);
+    setMealPlanAmount(totalDeltaCents > 0 ? ((totalDeltaCents * nights) / 100).toString() : '');
   };
 
   const recalcAddonAmount = (updated: Record<string, { id: string; name: string; price: number }[]>) => {
@@ -111,6 +138,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
       }
 
       recalcTariff(updated);
+      recalcMealPlanSuggestion(updated);
       return updated;
     });
   };
@@ -129,8 +157,9 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
     });
   };
 
-  // Nights can change (check-in/out edited) after rooms are already selected —
-  // keep the tariff/addon totals in sync with the current selection in that case too.
+  // Nights, Occupancy, or Meal Plan can change after rooms are already selected —
+  // keep the tariff/addon/meal-plan totals in sync with the current selection
+  // whenever any of them change.
   useEffect(() => {
     if (justLoadedRef.current) {
       justLoadedRef.current = false;
@@ -138,8 +167,9 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
     }
     recalcTariff(roomIds);
     recalcAddonAmount(roomAddons);
+    recalcMealPlanSuggestion(roomIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nights]);
+  }, [nights, occupancy, mealPlan]);
 
   const tariffCents = Math.round(parseFloat(tariff || '0') * 100);
   const addonCents = Math.round(parseFloat(addonAmount || '0') * 100);
@@ -147,12 +177,17 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
   // GST applies to Tariff + Addons (e.g. extra bed), not Tariff alone.
   const gstCents = Math.round((tariffCents + addonCents) * (gstPercentage / 100));
   const discountCents = Math.round(parseFloat(discount || '0') * 100);
+  const mealPlanAmountCents = Math.round(parseFloat(mealPlanAmount || '0') * 100);
+  const mealPlanGstPercentage = parseFloat(mealPlanGstPercent || '0');
+  const mealPlanGstCents = Math.round(mealPlanAmountCents * (mealPlanGstPercentage / 100));
 
   const total = bookingTotal({
     tariff: tariffCents,
     gst: gstCents,
     addonAmount: addonCents,
     discount: discountCents,
+    mealPlanAmount: mealPlanAmountCents,
+    mealPlanGst: mealPlanGstCents,
   });
 
   const handleSave = async () => {
@@ -170,6 +205,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
         data: {
           guestName: guestName.trim(),
           occupancy,
+          mealPlan,
           roomIds,
           roomAddons,
           checkIn,
@@ -178,6 +214,8 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
           tariff: tariffCents,
           gst: gstCents,
           addonAmount: addonCents,
+          mealPlanAmount: mealPlanAmountCents,
+          mealPlanGst: mealPlanGstCents,
           discount: discountCents,
           remarks: remarks.trim() || undefined,
         }
@@ -222,8 +260,18 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Meal Plan</Label>
+              <Select value={mealPlan} onValueChange={(v) => setMealPlan(v as MealPlan)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EP">Room Only (EP)</SelectItem>
+                  <SelectItem value="CP">Room + Breakfast (CP)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label>Rooms</Label>
@@ -238,7 +286,8 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto p-1 pr-2">
                 {availableRooms.map(r => {
                   const isSelected = roomIds.includes(r.id);
-                  const rt = roomTypes.find(t => t.id === r.roomTypeId)?.name;
+                  const rt = roomTypes.find(t => t.id === r.roomTypeId);
+                  const rate = rateFor(rt, occupancy, mealPlan, r.baseTariff);
 
                   return (
                     <button
@@ -257,8 +306,8 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
                         </div>
                       )}
                       <span className="font-bold text-gray-900 text-base leading-tight">{r.roomNumber}</span>
-                      <span className="text-[11px] text-gray-500 leading-tight truncate w-full">{rt}</span>
-                      <span className="text-[11px] font-medium text-gray-600 leading-tight">{formatINR(r.baseTariff)}</span>
+                      <span className="text-[11px] text-gray-500 leading-tight truncate w-full">{rt?.name}</span>
+                      <span className="text-[11px] font-medium text-gray-600 leading-tight">{formatINR(rate)}</span>
                     </button>
                   );
                 })}
@@ -316,6 +365,24 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
               <Input type="number" value={addonAmount} onChange={(e) => setAddonAmount(e.target.value)} />
             </div>
           </div>
+          <div className="border rounded-xl p-3 bg-muted/20">
+            <Label className="block mb-2">Meal Plan Allocation (optional)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Auto-filled from the CP−EP rate difference when Meal Plan above is set to "Room + Breakfast" — adjust
+              freely. Feeds into Restaurant Sales as meal plan allocation, and is part of this guest's single bill below.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Meal Plan Amount (₹)</Label>
+                <Input type="number" min="0" value={mealPlanAmount} onChange={(e) => setMealPlanAmount(e.target.value)} />
+              </div>
+              <div>
+                <Label>Meal Plan GST (%)</Label>
+                <Input type="number" min="0" value={mealPlanGstPercent} onChange={(e) => setMealPlanGstPercent(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
           <div>
             <Label>Remarks (optional)</Label>
             <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
@@ -324,6 +391,9 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
           <div className="flex justify-between items-center pt-4 border-t">
             <div>
               <div className="text-sm text-muted-foreground">{nights} night(s) &bull; {roomIds.length} room(s)</div>
+              {mealPlanAmountCents > 0 && (
+                <div className="text-sm text-muted-foreground">Meal Plan: {formatINR(mealPlanAmountCents + mealPlanGstCents)}</div>
+              )}
               <div className="text-lg font-bold">Total: {formatINR(total)}</div>
             </div>
             {error && <div className="text-sm text-destructive">{error}</div>}

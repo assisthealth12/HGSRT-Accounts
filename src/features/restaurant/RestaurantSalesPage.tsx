@@ -75,7 +75,7 @@ export function RestaurantSalesPage() {
   const mealPlanAllocation = useMemo(
     () => bookings
       .filter(b => b.checkIn === saleDate)
-      .reduce((acc, b) => acc + b.addonAmount, 0),
+      .reduce((acc, b) => acc + (b.mealPlanAmount || 0) + (b.mealPlanGst || 0), 0),
     [bookings, saleDate]
   );
 
@@ -101,7 +101,7 @@ export function RestaurantSalesPage() {
     const restaurantByDate = new Map(restaurantSales.map(s => [s.saleDate, s]));
     const mealPlanByDate = new Map<string, number>();
     bookings.forEach(b => {
-      mealPlanByDate.set(b.checkIn, (mealPlanByDate.get(b.checkIn) || 0) + b.addonAmount);
+      mealPlanByDate.set(b.checkIn, (mealPlanByDate.get(b.checkIn) || 0) + (b.mealPlanAmount || 0) + (b.mealPlanGst || 0));
     });
 
     const dates = new Set([

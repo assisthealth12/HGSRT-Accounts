@@ -10,7 +10,7 @@ import { useAttendance, useMarkAttendance } from '@/hooks/useAttendance';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { ClipboardList, Check, X, Users, CalendarDays } from 'lucide-react';
+import { ClipboardList, Check, X, Users, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAttendanceStatus } from '@/domain/attendance';
 import { formatINR } from '@/domain/money';
@@ -24,6 +24,8 @@ import { useQuery } from '@tanstack/react-query';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
+import { toast } from '@/hooks/use-toast';
+import { confirmAction } from '@/hooks/use-confirm';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -59,9 +61,55 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
 
   const recordByStaffId = new Map(records.map(r => [r.staffId, r]));
 
-  const handleMark = async (staffId: string, status: 'present' | 'paid_leave' | 'absent') => {
-    const existing = recordByStaffId.get(staffId);
-    await markAttendance({ staffId, date, status, existing });
+  // Pagination Logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+  const totalPages = Math.ceil(activeStaff.length / itemsPerPage);
+  const paginatedStaff = activeStaff.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  const handleMark = async (member: any, status: 'present' | 'paid_leave' | 'absent') => {
+    const existing = recordByStaffId.get(member.id);
+    const currentStatus = existing ? getAttendanceStatus(existing) : null;
+    
+    if (currentStatus && currentStatus !== status) {
+      const statusLabels = { present: 'Present', paid_leave: 'Paid Leave', absent: 'Absent' };
+      const oldLabel = statusLabels[currentStatus as keyof typeof statusLabels] || 'Unknown';
+      const newLabel = statusLabels[status];
+      
+      const ok = await confirmAction({
+        title: 'Change Attendance?',
+        description: `You are changing the attendance for ${member.name} from ${oldLabel} to ${newLabel}. Proceed?`,
+        confirmLabel: 'Change'
+      });
+      if (!ok) return;
+    }
+
+    await markAttendance({ staffId: member.id, date, status, existing });
+  };
+
+  const handleMarkAllPresent = async () => {
+    const unmarked = activeStaff.filter(member => !recordByStaffId.has(member.id));
+    if (unmarked.length === 0) {
+      toast({ title: 'All staff already marked!' });
+      return;
+    }
+    
+    try {
+      await Promise.all(
+        unmarked.map(member => 
+          markAttendance({ staffId: member.id, date, status: 'present', existing: undefined })
+        )
+      );
+      toast({ title: 'Marked all remaining staff as present' });
+    } catch (e) {
+      toast({ title: 'Failed to mark all', variant: 'destructive' });
+    }
   };
 
   const presentCount = records.filter(r => getAttendanceStatus(r) === 'present').length;
@@ -82,11 +130,21 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
   return (
     <div className="space-y-6">
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-6 justify-between items-center">
-        <div>
-          <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Marking Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-48 h-12 rounded-xl text-lg font-bold bg-gray-50 border-gray-200" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 w-full md:w-auto">
+          <div>
+            <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Marking Date</Label>
+            <Input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} className="w-full sm:w-48 h-12 rounded-xl text-lg font-bold bg-gray-50 border-gray-200" />
+          </div>
+          <Button 
+            onClick={handleMarkAllPresent}
+            disabled={isPending || presentCount === activeStaff.length}
+            className="h-12 w-full sm:w-auto rounded-xl px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+          >
+            <Check className="w-4 h-4 mr-2 stroke-[3]" />
+            Mark All Present
+          </Button>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
           <div className="text-right">
             <div className="text-2xl font-black text-gray-900">{presentCount} <span className="text-gray-400 text-lg">/ {activeStaff.length}</span></div>
             <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mt-1">Present Today</div>
@@ -111,7 +169,7 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 font-medium">
-              {activeStaff.map(member => {
+              {paginatedStaff.map(member => {
                 const record = recordByStaffId.get(member.id);
                 const status = record ? getAttendanceStatus(record) : null;
                 const isMarked = !!record;
@@ -148,7 +206,7 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
                           variant="outline"
                           size="sm"
                           disabled={isPending}
-                          onClick={() => handleMark(member.id, 'present')}
+                          onClick={() => handleMark(member, 'present')}
                           className={cn(
                             "rounded-lg font-bold transition-all px-4",
                             status === 'present' ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "text-gray-500 hover:text-emerald-700 hover:bg-emerald-50"
@@ -160,7 +218,7 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
                           variant="outline"
                           size="sm"
                           disabled={isPending || !canTakePaidLeave}
-                          onClick={() => handleMark(member.id, 'paid_leave')}
+                          onClick={() => handleMark(member, 'paid_leave')}
                           className={cn(
                             "rounded-lg font-bold transition-all px-4",
                             status === 'paid_leave' ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" : "text-gray-500 hover:text-amber-700 hover:bg-amber-50",
@@ -174,7 +232,7 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
                           variant="outline"
                           size="sm"
                           disabled={isPending}
-                          onClick={() => handleMark(member.id, 'absent')}
+                          onClick={() => handleMark(member, 'absent')}
                           className={cn(
                             "rounded-lg font-bold transition-all px-4",
                             status === 'absent' ? "bg-red-600 text-white border-red-600 hover:bg-red-700" : "text-gray-500 hover:text-red-700 hover:bg-red-50"
@@ -190,6 +248,38 @@ function DailyEntryTab({ activeStaff }: { activeStaff: any[] }) {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+            <div className="text-sm text-gray-500">
+              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, activeStaff.length)}</span> of <span className="font-medium">{activeStaff.length}</span> staff
+            </div>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Previous
+              </Button>
+              <div className="text-sm font-medium text-gray-700 px-2">
+                Page {currentPage} of {totalPages}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -215,6 +305,18 @@ function MonthlyViewTab({ activeStaff }: { activeStaff: any[] }) {
     return new Date(year, m, 0).getDate();
   }, [month]);
 
+  // Pagination Logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+  const totalPages = Math.ceil(activeStaff.length / itemsPerPage);
+  const paginatedStaff = activeStaff.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   if (isLoading || isLoadingPayments) return <LoadingState label="Loading monthly data..." />;
 
   return (
@@ -239,7 +341,7 @@ function MonthlyViewTab({ activeStaff }: { activeStaff: any[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 font-medium">
-              {activeStaff.map(member => {
+              {paginatedStaff.map(member => {
                 const memberRecords = monthAttendance.filter(r => r.staffId === member.id);
                 const totalPresent = daysPresent(memberRecords);
                 const totalPaidLeave = daysPaidLeave(memberRecords);
@@ -308,6 +410,38 @@ function MonthlyViewTab({ activeStaff }: { activeStaff: any[] }) {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+            <div className="text-sm text-gray-500">
+              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, activeStaff.length)}</span> of <span className="font-medium">{activeStaff.length}</span> staff
+            </div>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Previous
+              </Button>
+              <div className="text-sm font-medium text-gray-700 px-2">
+                Page {currentPage} of {totalPages}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <RecordPaymentDialog staffMember={payingStaff} onOpenChange={(open) => !open && setPayingStaff(null)} />

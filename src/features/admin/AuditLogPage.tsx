@@ -7,7 +7,7 @@ import { useStaff } from '@/hooks/useStaff';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { ShieldCheck, ChevronDown, ChevronUp, User, Clock, ArrowRight } from 'lucide-react';
+import { ShieldCheck, ChevronDown, ChevronUp, User, Clock, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatINR } from '@/domain/money';
 
 // --- Formatting Helpers ---
