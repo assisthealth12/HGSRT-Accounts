@@ -12,7 +12,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useCreateRoom, useUpdateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { Settings, Edit2, Trash2, Plus, Bed, LayoutGrid, Check, X } from 'lucide-react';
+import { Settings, Edit2, Trash2, Plus, Bed, LayoutGrid, Check, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -356,6 +356,7 @@ function RoomTypeRatesPreview({ roomType }: { roomType: RoomType | undefined }) 
 
 function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open: boolean, onOpenChange: (open: boolean) => void }) {
   const { data: roomTypes = [] } = useRoomTypes();
+  const { data: rooms = [] } = useRooms();
   const { mutateAsync: updateRoom, isPending } = useUpdateRoom();
 
   const [roomNumber, setRoomNumber] = useState('');
@@ -379,6 +380,14 @@ function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open:
   const handleSave = async () => {
     if (!room || !roomNumber.trim() || !roomTypeId) return;
     if (!typeHasRates && !baseTariff) return;
+
+    const isDuplicate = rooms.some(r =>
+      r.id !== room.id && r.roomNumber.trim().toLowerCase() === roomNumber.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      toast({ title: 'Duplicate Room Number', description: `Room ${roomNumber.trim()} already exists. Room numbers must be unique.`, variant: 'destructive' });
+      return;
+    }
 
     await updateRoom({
       id: room.id,
@@ -452,12 +461,35 @@ function RoomsManagementCard() {
   
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 12;
+
   const selectedType = roomTypes.find(t => t.id === roomTypeId);
   const typeHasRates = !!selectedType?.rates;
+
+  const filteredRooms = rooms.filter(room => {
+    if (!search.trim()) return true;
+    const rt = roomTypes.find(t => t.id === room.roomTypeId);
+    const q = search.trim().toLowerCase();
+    return room.roomNumber.toLowerCase().includes(q)
+      || room.floor?.toLowerCase().includes(q)
+      || rt?.name.toLowerCase().includes(q);
+  });
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const paginatedRooms = filteredRooms.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   const handleAdd = async () => {
     if (!roomNumber.trim() || !roomTypeId) return;
     if (!typeHasRates && !baseTariff) return;
+
+    const isDuplicate = rooms.some(r => r.roomNumber.trim().toLowerCase() === roomNumber.trim().toLowerCase());
+    if (isDuplicate) {
+      toast({ title: 'Duplicate Room Number', description: `Room ${roomNumber.trim()} already exists. Room numbers must be unique.`, variant: 'destructive' });
+      return;
+    }
+
     await createRoom({
       roomNumber: roomNumber.trim(),
       roomTypeId,
@@ -525,11 +557,23 @@ function RoomsManagementCard() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-gray-700">Manage Rooms</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-gray-700">Manage Rooms</h3>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Search room no., type, floor..."
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(0); }}
+                  className="pl-9 h-9"
+                />
+              </div>
+            </div>
             {rooms.length === 0 && <div className="text-muted-foreground text-sm py-4 text-center border rounded-lg border-dashed">No rooms configured yet.</div>}
-            
+            {rooms.length > 0 && filteredRooms.length === 0 && <div className="text-muted-foreground text-sm py-4 text-center border rounded-lg border-dashed">No rooms match "{search}".</div>}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {rooms.map(room => {
+              {paginatedRooms.map(room => {
                 const rt = roomTypes.find(t => t.id === room.roomTypeId);
                 return (
                   <div key={room.id} className="group relative flex flex-col justify-between p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-emerald-200 transition-all">
@@ -579,12 +623,29 @@ function RoomsManagementCard() {
                 );
               })}
             </div>
+
+            {filteredRooms.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs text-gray-500">
+                  Showing {currentPage * PAGE_SIZE + 1}-{Math.min((currentPage + 1) * PAGE_SIZE, filteredRooms.length)} of {filteredRooms.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xs font-medium text-gray-600">Page {currentPage + 1} of {totalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
         </CardContent>
       </Card>
 
-      <EditRoomDialog 
+      <EditRoomDialog
         room={editingRoom} 
         open={!!editingRoom} 
         onOpenChange={(open) => !open && setEditingRoom(null)} 

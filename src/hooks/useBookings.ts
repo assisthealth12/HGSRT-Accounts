@@ -120,7 +120,7 @@ export function useDeleteBooking() {
         action: 'delete',
         entityType: 'booking',
         entityId: id,
-        changes: [{ field: 'deletedAt', old: undefined, new: Date.now() }],
+        changes: [{ field: 'deletedAt', oldValue: null, newValue: Date.now() }],
       });
       return id;
     },
