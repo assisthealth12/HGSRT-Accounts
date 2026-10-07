@@ -150,7 +150,10 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const gstPercentage = parseFloat(gst || '0');
   // GST applies to Tariff + Addons (e.g. extra bed), not Tariff alone.
   const gstCents = Math.round((tariffCents + addonCents) * (gstPercentage / 100));
-  const discountCents = Math.round(parseFloat(discount || '0') * 100);
+  // Discount is a % of Tariff (same pattern as GST), not a flat ₹ amount. Clamped
+  // defensively to 0-100 even though the input already blocks out-of-range values.
+  const discountPercentage = Math.min(100, Math.max(0, parseFloat(discount || '0')));
+  const discountCents = Math.round(tariffCents * (discountPercentage / 100));
   const mealPlanAmountCents = Math.round(parseFloat(mealPlanAmount || '0') * 100);
   const mealPlanGstPercentage = parseFloat(mealPlanGstPercent || '0');
   const mealPlanGstCents = Math.round(mealPlanAmountCents * (mealPlanGstPercentage / 100));
@@ -171,6 +174,12 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     if (value !== '' && parseFloat(value) < 0) return;
     setAmountPaid(value);
     if (!value || parseFloat(value) === 0) setPaymentModeId('');
+  };
+
+  const handleDiscountChange = (value: string) => {
+    // Never allow a negative or over-100% discount.
+    if (value !== '' && (parseFloat(value) < 0 || parseFloat(value) > 100)) return;
+    setDiscount(value);
   };
 
   const reset = () => {
@@ -353,19 +362,19 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <Label>Tariff (₹)</Label>
-              <Input type="number" value={tariff} onChange={(e) => setTariff(e.target.value)} />
+              <Input type="number" min="0" value={tariff} onChange={(e) => setTariff(e.target.value)} />
             </div>
             <div>
-              <Label>Discount (₹)</Label>
-              <Input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+              <Label>Discount (%)</Label>
+              <Input type="number" min="0" max="100" value={discount} onChange={(e) => handleDiscountChange(e.target.value)} />
             </div>
             <div>
               <Label>GST (%)</Label>
-              <Input type="number" value={gst} onChange={(e) => setGst(e.target.value)} />
+              <Input type="number" min="0" value={gst} onChange={(e) => setGst(e.target.value)} />
             </div>
             <div>
               <Label>Addon (₹)</Label>
-              <Input type="number" value={addonAmount} onChange={(e) => setAddonAmount(e.target.value)} />
+              <Input type="number" min="0" value={addonAmount} onChange={(e) => setAddonAmount(e.target.value)} />
             </div>
           </div>
           <div className="border rounded-xl p-3 bg-muted/20">
@@ -428,7 +437,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
                 <div className="text-sm text-muted-foreground">Paid: {formatINR(amountPaidCents)}</div>
               )}
               {discountCents > 0 && (
-                <div className="text-sm text-muted-foreground">Discount: {formatINR(discountCents)}</div>
+                <div className="text-sm text-muted-foreground">Discount: {discountPercentage}% ({formatINR(discountCents)})</div>
               )}
               {mealPlanAmountCents > 0 && (
                 <div className="text-sm text-muted-foreground">Meal Plan: {formatINR(mealPlanAmountCents + mealPlanGstCents)}</div>

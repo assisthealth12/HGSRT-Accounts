@@ -27,8 +27,8 @@ export function RoomsPage() {
     // A room is occupied if there's a booking where date falls between checkIn and checkOut (exclusive of checkOut for overnight stays).
     // If date == checkOut, the guest is leaving that day, so the room is available for the next check-in.
     return rooms.map(room => {
-      const activeBooking = bookings.find(b => 
-        b.roomId === room.id && date >= b.checkIn && date < b.checkOut
+      const activeBooking = bookings.find(b =>
+        b.roomIds?.includes(room.id) && date >= b.checkIn && date < b.checkOut
       );
       return {
         ...room,

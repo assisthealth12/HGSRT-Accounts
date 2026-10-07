@@ -326,10 +326,38 @@ function RoomTypesCard() {
   );
 }
 
+function RoomTypeRatesPreview({ roomType }: { roomType: RoomType | undefined }) {
+  if (!roomType) return null;
+  if (!roomType.rates) {
+    return (
+      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        {roomType.name} has no rates configured yet — this room will use its own Base Tariff below for every
+        occupancy/meal plan. Set up rates in Room Types &amp; Rates above to link it properly.
+      </div>
+    );
+  }
+  const r = roomType.rates;
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+      <div className="text-xs font-semibold text-emerald-800 mb-2">
+        Linked to {roomType.name} rates — bookings will use these instead of Base Tariff
+      </div>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs text-emerald-900">
+        <div>Single EP <span className="font-semibold">{formatINR(r.singleEP)}</span></div>
+        <div>Double EP <span className="font-semibold">{formatINR(r.doubleEP)}</span></div>
+        <div>Triple EP <span className="font-semibold">{formatINR(r.tripleEP)}</span></div>
+        <div>Single CP <span className="font-semibold">{formatINR(r.singleCP)}</span></div>
+        <div>Double CP <span className="font-semibold">{formatINR(r.doubleCP)}</span></div>
+        <div>Triple CP <span className="font-semibold">{formatINR(r.tripleCP)}</span></div>
+      </div>
+    </div>
+  );
+}
+
 function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open: boolean, onOpenChange: (open: boolean) => void }) {
   const { data: roomTypes = [] } = useRoomTypes();
   const { mutateAsync: updateRoom, isPending } = useUpdateRoom();
-  
+
   const [roomNumber, setRoomNumber] = useState('');
   const [roomTypeId, setRoomTypeId] = useState('');
   const [baseTariff, setBaseTariff] = useState('');
@@ -340,26 +368,30 @@ function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open:
     if (room && open) {
       setRoomNumber(room.roomNumber);
       setRoomTypeId(room.roomTypeId);
-      setBaseTariff((room.baseTariff / 100).toString()); // Convert paise to rupees for input
+      setBaseTariff(room.baseTariff ? (room.baseTariff / 100).toString() : '');
       setFloor(room.floor || '');
     }
   }, [room, open]);
 
+  const selectedType = roomTypes.find(t => t.id === roomTypeId);
+  const typeHasRates = !!selectedType?.rates;
+
   const handleSave = async () => {
-    if (!room || !roomNumber.trim() || !roomTypeId || !baseTariff) return;
-    
+    if (!room || !roomNumber.trim() || !roomTypeId) return;
+    if (!typeHasRates && !baseTariff) return;
+
     await updateRoom({
       id: room.id,
       previous: room,
       data: {
         roomNumber: roomNumber.trim(),
         roomTypeId,
-        baseTariff: Math.round(parseFloat(baseTariff) * 100), // Convert rupees to paise
+        baseTariff: Math.round(parseFloat(baseTariff || '0') * 100), // Convert rupees to paise
         isActive: room.isActive,
         floor: floor.trim()
       }
     });
-    
+
     toast({ title: 'Room Updated', description: 'Room details saved successfully.' });
     onOpenChange(false);
   };
@@ -386,20 +418,21 @@ function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open:
               </SelectContent>
             </Select>
           </div>
+          <RoomTypeRatesPreview roomType={selectedType} />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Floor</Label>
               <Input value={floor} onChange={e => setFloor(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Base Tariff (₹)</Label>
-              <Input type="number" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} />
+              <Label>Base Tariff (₹){typeHasRates && <span className="text-muted-foreground font-normal"> (fallback, unused)</span>}</Label>
+              <Input type="number" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} disabled={typeHasRates} />
             </div>
           </div>
         </div>
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isPending || !roomNumber || !roomTypeId || !baseTariff}>Save Changes</Button>
+          <Button onClick={handleSave} disabled={isPending || !roomNumber || !roomTypeId || (!typeHasRates && !baseTariff)}>Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -419,12 +452,16 @@ function RoomsManagementCard() {
   
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
+  const selectedType = roomTypes.find(t => t.id === roomTypeId);
+  const typeHasRates = !!selectedType?.rates;
+
   const handleAdd = async () => {
-    if (!roomNumber.trim() || !roomTypeId || !baseTariff) return;
+    if (!roomNumber.trim() || !roomTypeId) return;
+    if (!typeHasRates && !baseTariff) return;
     await createRoom({
       roomNumber: roomNumber.trim(),
       roomTypeId,
-      baseTariff: Math.round(parseFloat(baseTariff) * 100), // Convert rupees to paise
+      baseTariff: Math.round(parseFloat(baseTariff || '0') * 100), // Convert rupees to paise
       isActive: true,
       floor: floor.trim()
     });
@@ -450,8 +487,8 @@ function RoomsManagementCard() {
         </CardHeader>
         <CardContent className="pt-6">
           
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8">
-            <h3 className="text-sm font-bold text-gray-700 mb-4">Quick Add Room</h3>
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8 space-y-3">
+            <h3 className="text-sm font-bold text-gray-700">Quick Add Room</h3>
             <div className="flex flex-col md:flex-row gap-3 items-end">
               <div className="space-y-1.5 flex-1">
                 <label className="text-xs font-semibold text-gray-600">Room Number</label>
@@ -475,13 +512,16 @@ function RoomsManagementCard() {
                 <Input placeholder="e.g. 1" value={floor} onChange={e => setFloor(e.target.value)} className="bg-white" />
               </div>
               <div className="space-y-1.5 flex-1">
-                <label className="text-xs font-semibold text-gray-600">Base Tariff (₹)</label>
-                <Input type="number" placeholder="1500" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} className="bg-white" />
+                <label className="text-xs font-semibold text-gray-600">
+                  Base Tariff (₹){typeHasRates && <span className="font-normal text-gray-400"> (fallback, unused)</span>}
+                </label>
+                <Input type="number" placeholder="1500" value={baseTariff} onChange={e => setBaseTariff(e.target.value)} className="bg-white" disabled={typeHasRates} />
               </div>
-              <Button type="button" onClick={handleAdd} disabled={isPending || !roomNumber || !roomTypeId || !baseTariff} className="w-full md:w-auto px-8 bg-emerald-600 hover:bg-emerald-700">
+              <Button type="button" onClick={handleAdd} disabled={isPending || !roomNumber || !roomTypeId || (!typeHasRates && !baseTariff)} className="w-full md:w-auto px-8 bg-emerald-600 hover:bg-emerald-700">
                 <Plus className="w-4 h-4 mr-2" /> Add Room
               </Button>
             </div>
+            {roomTypeId && <RoomTypeRatesPreview roomType={selectedType} />}
           </div>
 
           <div className="space-y-4">
@@ -516,10 +556,17 @@ function RoomsManagementCard() {
                       </div>
                       
                       <div className="mt-4 flex flex-col gap-1">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-gray-500">Tariff</span>
-                          <span className="font-bold text-gray-900">{formatINR(room.baseTariff)}</span>
-                        </div>
+                        {rt?.rates ? (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-500">Rates</span>
+                            <span className="font-bold text-emerald-700">Linked to {rt.name}</span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-500">Tariff</span>
+                            <span className="font-bold text-gray-900">{formatINR(room.baseTariff)}</span>
+                          </div>
+                        )}
                         {room.floor && (
                           <div className="flex justify-between items-center text-sm">
                             <span className="text-gray-500">Floor</span>
