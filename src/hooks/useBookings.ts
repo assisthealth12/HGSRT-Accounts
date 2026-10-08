@@ -25,6 +25,44 @@ export function useBookings() {
   });
 }
 
+// Scoped by check-in date (inclusive) instead of fetching every booking ever made —
+// keeps read volume and page-load time flat as the collection grows across years,
+// instead of growing with total lifetime booking count.
+export function useBookingsInRange(startDate: string, endDate: string) {
+  const propertyId = useAuthStore((state) => state.propertyId);
+
+  return useQuery({
+    queryKey: ['bookings', propertyId, 'range', startDate, endDate],
+    queryFn: async () => {
+      if (!propertyId) return [];
+
+      const q = query(
+        collection(db, 'bookings'),
+        where('propertyId', '==', propertyId),
+        where('checkIn', '>=', startDate),
+        where('checkIn', '<=', endDate),
+      );
+      const snapshot = await getDocs(q);
+      const bookings = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Booking[];
+      return excludeSoftDeleted(bookings).sort((a, b) => b.checkIn.localeCompare(a.checkIn));
+    },
+    enabled: !!propertyId,
+  });
+}
+
+// For "what's the state of my rooms right now" views: a stay can have started before
+// the date being viewed, so we look back far enough to catch any booking still active
+// on that date (hotel stays are essentially never longer than this), then the caller
+// filters to checkOut > date client-side. Bounded lookback = bounded reads forever.
+const LIVE_STATUS_LOOKBACK_DAYS = 120;
+
+export function useActiveBookingsAround(date: string) {
+  const start = new Date(date);
+  start.setDate(start.getDate() - LIVE_STATUS_LOOKBACK_DAYS);
+  const startDate = start.toISOString().slice(0, 10);
+  return useBookingsInRange(startDate, date);
+}
+
 export function useCreateBooking() {
   const propertyId = useAuthStore((state) => state.propertyId);
   const user = useAuthStore((state) => state.user);

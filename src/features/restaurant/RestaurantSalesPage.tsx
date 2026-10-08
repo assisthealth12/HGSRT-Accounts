@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { formatINR } from '@/domain/money';
 import { totalBooked, totalCollected, dailyTotal } from '@/domain/restaurantDailySales';
 import { useRestaurantDailySales, useUpsertRestaurantDailySale, useDeleteRestaurantDailySale } from '@/hooks/useRestaurantDailySales';
-import { useBookings } from '@/hooks/useBookings';
+import { useBookingsInRange } from '@/hooks/useBookings';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatCard } from '@/components/shared/StatCard';
@@ -29,12 +29,12 @@ function toPaise(value: string) {
 }
 
 export function RestaurantSalesPage() {
+  const [month, setMonth] = useState(todayISO().slice(0, 7));
+
   const { data: restaurantSales = [] } = useRestaurantDailySales();
-  const { data: bookings = [] } = useBookings();
+  const { data: bookings = [] } = useBookingsInRange(`${month}-01`, `${month}-31`);
   const { mutateAsync: upsertRestaurantSale, isPending: isSavingRestaurant } = useUpsertRestaurantDailySale();
   const { mutateAsync: deleteRestaurantSale } = useDeleteRestaurantDailySale();
-
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 

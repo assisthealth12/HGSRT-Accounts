@@ -6,8 +6,8 @@ import { formatINR } from '@/domain/money';
 import { bookingTotal, bookingPending } from '@/domain/booking';
 import { totalBooked as restaurantBooked, totalCollected as restaurantCollected } from '@/domain/restaurantDailySales';
 import { balanceOwed } from '@/domain/payrollPayment';
-import { useBookings } from '@/hooks/useBookings';
-import { usePayments } from '@/hooks/usePayments';
+import { useBookingsInRange } from '@/hooks/useBookings';
+import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRestaurantDailySales } from '@/hooks/useRestaurantDailySales';
 import { useBanquetSales } from '@/hooks/useBanquetSales';
 import { useBanquetBookings } from '@/hooks/useBanquetBookings';
@@ -49,8 +49,8 @@ export function OwnerDashboardPage() {
   const [from, setFrom] = useState(firstOfMonthISO());
   const [to, setTo] = useState(todayISO());
 
-  const { data: bookings = [] } = useBookings();
-  const { data: payments = [] } = usePayments();
+  const { data: bookings = [] } = useBookingsInRange(from, to);
+  const { data: payments = [] } = usePaymentsInRange(from, to);
   const { data: restaurantSales = [] } = useRestaurantDailySales();
   const { data: banquetSales = [] } = useBanquetSales();
   const { data: banquetBookings = [] } = useBanquetBookings();

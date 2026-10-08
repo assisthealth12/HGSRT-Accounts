@@ -14,7 +14,7 @@ import { Booking, bookingTotal, datesOverlap, Occupancy } from '@/domain/booking
 import { rateFor, mealPlanDeltaFor, MealPlan } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { useBookings, useUpdateBooking } from '@/hooks/useBookings';
+import { useBookingsInRange, useUpdateBooking } from '@/hooks/useBookings';
 import { useAddons, Addon } from '@/hooks/useAddons';
 import { toast } from '@/hooks/use-toast';
 import { Check, Plus } from 'lucide-react';
@@ -27,7 +27,6 @@ function nightsBetween(checkIn: string, checkOut: string) {
 export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking | null; onOpenChange: (open: boolean) => void }) {
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
-  const { data: bookings = [] } = useBookings();
   const { mutateAsync: updateBooking, isPending } = useUpdateBooking();
 
   const [guestName, setGuestName] = useState('');
@@ -47,6 +46,13 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
   const [error, setError] = useState('');
 
   const { data: addons = [] } = useAddons();
+
+  const overlapWindowStart = useMemo(() => {
+    const d = new Date(checkIn || new Date().toISOString().slice(0, 10));
+    d.setDate(d.getDate() - 120);
+    return d.toISOString().slice(0, 10);
+  }, [checkIn]);
+  const { data: bookings = [] } = useBookingsInRange(overlapWindowStart, checkOut || checkIn || new Date().toISOString().slice(0, 10));
 
   // Set right after a fresh booking load so the nights-recalc effect below knows to
   // skip its very next run — otherwise it fires on mount/booking-switch with the

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { useBookings } from '@/hooks/useBookings';
+import { useActiveBookingsAround } from '@/hooks/useBookings';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { Hotel, User, BedDouble } from 'lucide-react';
@@ -17,7 +17,7 @@ export function RoomsPage() {
   const [date, setDate] = useState(todayISO());
   const { data: rooms = [], isLoading: isLoadingRooms } = useRooms();
   const { data: roomTypes = [], isLoading: isLoadingTypes } = useRoomTypes();
-  const { data: bookings = [], isLoading: isLoadingBookings } = useBookings();
+  const { data: bookings = [], isLoading: isLoadingBookings } = useActiveBookingsAround(date);
 
   const isLoading = isLoadingRooms || isLoadingTypes || isLoadingBookings;
 

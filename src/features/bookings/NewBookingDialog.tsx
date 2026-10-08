@@ -14,7 +14,7 @@ import { bookingTotal, datesOverlap, Occupancy } from '@/domain/booking';
 import { rateFor, mealPlanDeltaFor, MealPlan } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { useBookings, useCreateBooking } from '@/hooks/useBookings';
+import { useBookingsInRange, useCreateBooking } from '@/hooks/useBookings';
 import { usePaymentModes } from '@/hooks/usePaymentModes';
 import { useRecordPayment } from '@/hooks/usePayments';
 import { useAddons, Addon } from '@/hooks/useAddons';
@@ -33,7 +33,6 @@ function nightsBetween(checkIn: string, checkOut: string) {
 export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
-  const { data: bookings = [] } = useBookings();
   const { data: paymentModes = [] } = usePaymentModes();
   const { mutateAsync: createBooking, isPending } = useCreateBooking();
   const { mutateAsync: recordPayment, isPending: isPaymentPending } = useRecordPayment();
@@ -59,6 +58,15 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [error, setError] = useState('');
 
   const { data: addons = [] } = useAddons();
+
+  // Overlap-check window: bookings starting up to 120 days before check-in could still
+  // be active on check-in, and any booking starting during the stay also conflicts.
+  const overlapWindowStart = useMemo(() => {
+    const d = new Date(checkIn || todayISO());
+    d.setDate(d.getDate() - 120);
+    return d.toISOString().slice(0, 10);
+  }, [checkIn]);
+  const { data: bookings = [] } = useBookingsInRange(overlapWindowStart, checkOut || checkIn || todayISO());
 
   const availableRooms = useMemo(() => {
     return rooms.filter(room => {

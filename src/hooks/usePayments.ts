@@ -25,6 +25,30 @@ export function usePayments(bookingId?: string) {
   });
 }
 
+// Scoped by paidOn date instead of fetching every payment ever recorded — same
+// read-scaling fix as useBookingsInRange. Assumes payments are made at or near the
+// stay dates (check-in/checkout), which holds for this hotel's workflow.
+export function usePaymentsInRange(startDate: string, endDate: string) {
+  const propertyId = useAuthStore((state) => state.propertyId);
+
+  return useQuery({
+    queryKey: ['payments', 'range', propertyId, startDate, endDate],
+    queryFn: async () => {
+      if (!propertyId) return [];
+
+      const q = query(
+        collection(db, 'payments'),
+        where('propertyId', '==', propertyId),
+        where('paidOn', '>=', startDate),
+        where('paidOn', '<=', endDate),
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Payment[];
+    },
+    enabled: !!propertyId,
+  });
+}
+
 export function useRecordPayment() {
   const propertyId = useAuthStore((state) => state.propertyId);
   const user = useAuthStore((state) => state.user);
@@ -49,9 +73,10 @@ export function useRecordPayment() {
       const docRef = await addDoc(collection(db, 'payments'), data);
       return { id: docRef.id, ...data };
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['payments', variables.bookingId, propertyId] });
-      queryClient.invalidateQueries({ queryKey: ['payments', 'all', propertyId] });
+    onSuccess: () => {
+      // Broad invalidate: catches the per-booking query, the 'all' query, and every
+      // date-ranged query cached under the 'payments' key.
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
     },
   });
 }

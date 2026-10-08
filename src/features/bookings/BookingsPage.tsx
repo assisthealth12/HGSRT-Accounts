@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatINR } from '@/domain/money';
 import { Booking, bookingTotal, bookingPending } from '@/domain/booking';
-import { useBookings, useDeleteBooking } from '@/hooks/useBookings';
-import { usePayments } from '@/hooks/usePayments';
+import { useActiveBookingsAround, useBookingsInRange, useDeleteBooking } from '@/hooks/useBookings';
+import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
 import { NewBookingDialog } from './NewBookingDialog';
 import { EditBookingDialog } from './EditBookingDialog';
@@ -26,8 +26,13 @@ function todayISO() {
 
 function GuestRegisterTab() {
   const [date, setDate] = useState(todayISO());
-  const { data: bookings = [], isLoading } = useBookings();
-  const { data: payments = [] } = usePayments();
+  const { data: bookings = [], isLoading } = useActiveBookingsAround(date);
+  const paymentsLookbackStart = useMemo(() => {
+    const d = new Date(date);
+    d.setDate(d.getDate() - 120);
+    return d.toISOString().slice(0, 10);
+  }, [date]);
+  const { data: payments = [] } = usePaymentsInRange(paymentsLookbackStart, date);
   const { data: rooms = [] } = useRooms();
   const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [isNewOpen, setIsNewOpen] = useState(false);
@@ -140,8 +145,8 @@ const MONTHLY_PAGE_SIZE = 10;
 function MonthlyRevenueTab() {
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [page, setPage] = useState(0);
-  const { data: bookings = [] } = useBookings();
-  const { data: payments = [] } = usePayments();
+  const { data: bookings = [] } = useBookingsInRange(`${month}-01`, `${month}-31`);
+  const { data: payments = [] } = usePaymentsInRange(`${month}-01`, `${month}-31`);
 
   const paymentsByBooking = useMemo(() => {
     const map = new Map<string, typeof payments>();
@@ -151,7 +156,7 @@ function MonthlyRevenueTab() {
 
   const rows = useMemo(() => {
     const dates = Array.from(new Set(
-      bookings.filter(b => b.checkIn.startsWith(month)).map(b => b.checkIn)
+      bookings.map(b => b.checkIn)
     )).sort();
 
     return dates.map(date => {
