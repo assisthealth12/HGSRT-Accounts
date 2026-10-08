@@ -10,6 +10,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useBookingsInRange } from '@/hooks/useBookings';
 import { formatINR } from '@/domain/money';
 import { parseImportFile, validateRows, ValidatedImportRow } from '@/lib/bulkImportBookings';
+import { downloadImportTemplate } from '@/lib/bulkImportTemplate';
 import { toast } from '@/hooks/use-toast';
 import { confirmAction } from '@/hooks/use-confirm';
 import { Upload, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
@@ -46,12 +47,21 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
   }, [existingBookings]);
 
   const rowsWithDuplicateFlag = useMemo(() => {
+    // Guard against the same guest+room+check-in appearing twice within THIS file too —
+    // not just against what's already in the database — otherwise two rows meant to
+    // represent one stay (e.g. a split payment entered as two rows) would silently
+    // create two separate bookings for the same room and double every total.
+    const seenInFile = new Set<string>();
     return rows.map(r => {
       if (r.errors.length > 0 || !r.roomId) return r;
       const key = `${r.roomId}|${r.checkIn}|${r.guestName.trim().toLowerCase()}`;
       if (existingKeys.has(key)) {
         return { ...r, errors: [...r.errors, 'Already imported (matching guest + room + check-in date exists)'] };
       }
+      if (seenInFile.has(key)) {
+        return { ...r, errors: [...r.errors, 'Duplicate of another row in this same file (same guest + room + check-in) — remove one, or record the second payment separately via Record Payment after import'] };
+      }
+      seenInFile.add(key);
       return r;
     });
   }, [rows, existingKeys]);
@@ -178,6 +188,9 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
                 Choose File
               </span>
             </label>
+            <button className="text-xs text-gray-500 hover:text-emerald-700 hover:underline" onClick={() => downloadImportTemplate()}>
+              Don't have the template? Download it here
+            </button>
           </div>
         )}
 

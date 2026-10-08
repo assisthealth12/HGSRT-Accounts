@@ -13,7 +13,11 @@ import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { AlertCircle, PartyPopper, Edit, Trash2 } from 'lucide-react';
+
+type DaysFilter = 'all' | '7' | '15' | '30';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -39,10 +43,13 @@ export function PendingDuesPage() {
   const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [daysFilter, setDaysFilter] = useState<DaysFilter>('all');
+  const [checkInFrom, setCheckInFrom] = useState('');
+  const [checkInTo, setCheckInTo] = useState('');
 
   const isLoading = isLoadingBookings || isLoadingPayments;
 
-  const rows = useMemo<PendingRow[]>(() => {
+  const allPendingRows = useMemo<PendingRow[]>(() => {
     const paymentsByBooking = new Map<string, typeof payments>();
     payments.forEach(p => paymentsByBooking.set(p.bookingId, [...(paymentsByBooking.get(p.bookingId) || []), p]));
 
@@ -62,10 +69,20 @@ export function PendingDuesPage() {
       .sort((a, b) => b.daysOut - a.daysOut);
   }, [bookings, payments]);
 
+  const rows = useMemo(() => {
+    const minDays = daysFilter === 'all' ? 0 : parseInt(daysFilter, 10);
+    return allPendingRows.filter(r => {
+      if (r.daysOut < minDays) return false;
+      if (checkInFrom && r.booking.checkIn < checkInFrom) return false;
+      if (checkInTo && r.booking.checkIn > checkInTo) return false;
+      return true;
+    });
+  }, [allPendingRows, daysFilter, checkInFrom, checkInTo]);
+
   const totalPending = rows.reduce((acc, r) => acc + r.pending, 0);
 
   const columns: ColumnDef<PendingRow>[] = [
-    { id: 'guest', header: 'Guest', cell: ({ row }) => row.original.booking.guestName },
+    { id: 'guestName', accessorFn: (row) => row.booking.guestName, header: 'Guest' },
     {
       id: 'room',
       header: 'Room',
@@ -133,12 +150,48 @@ export function PendingDuesPage() {
         }
       />
 
+      <div className="flex flex-wrap items-end gap-4 bg-gray-50 border border-gray-100 rounded-xl p-4">
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Outstanding For At Least</Label>
+          <div className="flex gap-1">
+            {(['all', '7', '15', '30'] as DaysFilter[]).map(opt => (
+              <Button
+                key={opt}
+                type="button"
+                size="sm"
+                variant={daysFilter === opt ? 'default' : 'outline'}
+                onClick={() => setDaysFilter(opt)}
+              >
+                {opt === 'all' ? 'All' : `${opt}+ days`}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Check-in From</Label>
+          <Input type="date" value={checkInFrom} onChange={e => setCheckInFrom(e.target.value)} className="h-9" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Check-in To</Label>
+          <Input type="date" value={checkInTo} onChange={e => setCheckInTo(e.target.value)} className="h-9" />
+        </div>
+        {(daysFilter !== 'all' || checkInFrom || checkInTo) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDaysFilter('all'); setCheckInFrom(''); setCheckInTo(''); }}>
+            Clear Filters
+          </Button>
+        )}
+      </div>
+
       {isLoading ? (
         <LoadingState label="Loading pending dues..." />
       ) : rows.length === 0 ? (
-        <EmptyState icon={PartyPopper} title="No pending dues" description="Everyone's settled up." />
+        <EmptyState
+          icon={PartyPopper}
+          title={allPendingRows.length === 0 ? 'No pending dues' : 'No dues match these filters'}
+          description={allPendingRows.length === 0 ? "Everyone's settled up." : 'Try widening the date range or days-outstanding filter.'}
+        />
       ) : (
-        <DataTable columns={columns} data={rows} />
+        <DataTable columns={columns} data={rows} searchKey="guestName" />
       )}
 
       <EditBookingDialog booking={editingBooking} onOpenChange={(open) => !open && setEditingBooking(null)} />
