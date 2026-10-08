@@ -10,7 +10,8 @@ export const HARDCODED_PAYMENT_MODES: PaymentModeOption[] = [
   { id: 'bank_transfer', name: 'Bank Transfer', active: true, sortOrder: 4, ...base },
   { id: 'scanner', name: 'Scanner', active: true, sortOrder: 5, ...base },
   { id: 'ota_bank_transfer', name: 'OTA Bank Transfer', active: true, sortOrder: 6, ...base },
-  { id: 'pending', name: 'Pending', active: true, sortOrder: 7, ...base },
+  { id: 'b2c', name: 'B2C', active: true, sortOrder: 7, ...base },
+  { id: 'pending', name: 'Pending', active: true, sortOrder: 8, ...base },
 ];
 
 export function usePaymentModes() {
