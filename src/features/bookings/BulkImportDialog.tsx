@@ -86,12 +86,13 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
 
     const ok = await confirmAction({
       title: 'Confirm Bulk Import',
-      description: `This will create ${toImport.length} booking(s) in the live system. This cannot be undone from here (you'd need to delete them one by one). Continue?`,
+      description: `This will create ${toImport.length} booking(s) in the live system. You can undo this entire import afterward from Bookings > Bulk Delete if needed. Continue?`,
     });
     if (!ok) return;
 
     setStage('importing');
     let done = 0;
+    const importBatchId = `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     for (let i = 0; i < toImport.length; i += CHUNK_SIZE) {
       const chunk = toImport.slice(i, i + CHUNK_SIZE);
@@ -114,6 +115,8 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
           mealPlanGst: Math.round((row.mealPlanGst || 0) * 100),
           discount: Math.round((row.discount || 0) * 100),
           propertyId,
+          source: 'bulk-import',
+          importBatchId,
           createdAt: now,
           createdBy: user.uid,
           updatedAt: now,
