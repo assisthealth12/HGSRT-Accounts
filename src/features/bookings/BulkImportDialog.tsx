@@ -197,6 +197,8 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <th className="p-2 text-left">Room</th>
                     <th className="p-2 text-left">Check-in → Check-out</th>
                     <th className="p-2 text-left">Total</th>
+                    <th className="p-2 text-left">Paid</th>
+                    <th className="p-2 text-left">Pending</th>
                     <th className="p-2 text-left">Payment</th>
                     <th className="p-2 text-left">Status</th>
                   </tr>
@@ -209,6 +211,12 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
                       <td className="p-2">{row.roomNumber || '—'}</td>
                       <td className="p-2 whitespace-nowrap">{row.checkIn} → {row.checkOut}</td>
                       <td className="p-2">{row.total !== null ? formatINR(Math.round(row.total * 100)) : '—'}</td>
+                      <td className="p-2">{row.amountPaid !== null ? formatINR(Math.round(row.amountPaid * 100)) : '—'}</td>
+                      <td className="p-2 font-semibold">
+                        {row.total !== null && row.amountPaid !== null
+                          ? formatINR(Math.round((row.total - row.amountPaid) * 100))
+                          : '—'}
+                      </td>
                       <td className="p-2">{row.paymentMode || '—'}</td>
                       <td className="p-2">
                         {row.errors.length === 0 ? (
