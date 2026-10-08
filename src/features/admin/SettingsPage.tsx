@@ -10,6 +10,7 @@ import { useCreateRoomType, useUpdateRoomType, useDeleteRoomType } from '@/hooks
 import { RoomType, OccupancyRates } from '@/domain/room';
 import { useRooms } from '@/hooks/useRooms';
 import { useCreateRoom, useUpdateRoom, useDeleteRoom } from '@/hooks/useCreateRoom';
+import { useBookings } from '@/hooks/useBookings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Settings, Edit2, Trash2, Plus, Bed, LayoutGrid, Check, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -448,6 +449,57 @@ function EditRoomDialog({ room, open, onOpenChange }: { room: Room | null, open:
   );
 }
 
+// One-off admin check, not worth a dedicated always-on query: finds room numbers with
+// more than one active room record (can happen if two people add the same room before
+// the uniqueness check existed) and tells you which copy is safe to retire — the one
+// with zero bookings pointing at it — instead of leaving two visually-identical cards.
+function DuplicateRoomsBanner({ rooms }: { rooms: Room[] }) {
+  const { data: bookings = [] } = useBookings();
+  const { mutateAsync: deleteRoom, isPending } = useDeleteRoom();
+
+  const byNumber = new Map<string, Room[]>();
+  rooms.forEach(r => byNumber.set(r.roomNumber, [...(byNumber.get(r.roomNumber) || []), r]));
+  const duplicateGroups = Array.from(byNumber.entries()).filter(([, rs]) => rs.length > 1);
+
+  if (duplicateGroups.length === 0) return null;
+
+  const bookingCount = (roomId: string) => bookings.filter(b => b.roomIds?.includes(roomId)).length;
+
+  const handleResolve = async (group: Room[]) => {
+    const counts = group.map(r => ({ room: r, count: bookingCount(r.id) }));
+    const maxCount = Math.max(...counts.map(c => c.count));
+    const toKeep = counts.filter(c => c.count === maxCount);
+    if (toKeep.length !== 1) {
+      toast({ title: 'Cannot auto-resolve', description: `Room ${group[0].roomNumber}: multiple copies have booking history — resolve this one manually.`, variant: 'destructive' });
+      return;
+    }
+    const toRetire = counts.filter(c => c.room.id !== toKeep[0].room.id);
+    for (const { room } of toRetire) {
+      await deleteRoom(room);
+    }
+    toast({ title: 'Duplicate Resolved', description: `Room ${group[0].roomNumber}: kept the copy with ${maxCount} booking(s), retired ${toRetire.length} empty duplicate(s).` });
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 space-y-3">
+      <h3 className="text-sm font-bold text-amber-800">⚠ Duplicate Room Numbers Detected</h3>
+      <p className="text-xs text-amber-700">These room numbers have more than one active record. Click Resolve to automatically keep the copy with booking history and retire the empty duplicate.</p>
+      <div className="space-y-2">
+        {duplicateGroups.map(([number, group]) => (
+          <div key={number} className="flex items-center justify-between bg-white rounded-lg border border-amber-100 px-3 py-2">
+            <span className="text-sm font-semibold text-gray-800">
+              Room {number} — {group.length} copies ({group.map(r => `${bookingCount(r.id)} booking(s)`).join(', ')})
+            </span>
+            <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100" onClick={() => handleResolve(group)} disabled={isPending}>
+              Resolve
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RoomsManagementCard() {
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
@@ -518,7 +570,8 @@ function RoomsManagementCard() {
           <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 font-bold px-3">{rooms.length} Total Rooms</Badge>
         </CardHeader>
         <CardContent className="pt-6">
-          
+          <DuplicateRoomsBanner rooms={rooms} />
+
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8 space-y-3">
             <h3 className="text-sm font-bold text-gray-700">Quick Add Room</h3>
             <div className="flex flex-col md:flex-row gap-3 items-end">

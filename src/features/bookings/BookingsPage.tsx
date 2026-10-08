@@ -12,6 +12,7 @@ import { useActiveBookingsAround, useBookingsInRange, useDeleteBooking } from '@
 import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
 import { NewBookingDialog } from './NewBookingDialog';
+import { BulkImportDialog } from './BulkImportDialog';
 import { EditBookingDialog } from './EditBookingDialog';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -36,6 +37,7 @@ function GuestRegisterTab() {
   const { data: rooms = [] } = useRooms();
   const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [isNewOpen, setIsNewOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
@@ -110,7 +112,10 @@ function GuestRegisterTab() {
           <Label>Date</Label>
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <Button onClick={() => setIsNewOpen(true)}>New Booking</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsBulkImportOpen(true)}>Bulk Import</Button>
+          <Button onClick={() => setIsNewOpen(true)}>New Booking</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -134,6 +139,7 @@ function GuestRegisterTab() {
       )}
 
       <NewBookingDialog open={isNewOpen} onOpenChange={setIsNewOpen} />
+      <BulkImportDialog open={isBulkImportOpen} onOpenChange={setIsBulkImportOpen} />
       <EditBookingDialog booking={editingBooking} onOpenChange={(open) => !open && setEditingBooking(null)} />
       <RecordPaymentDialog booking={payingBooking} onOpenChange={(open) => !open && setPayingBooking(null)} />
     </div>
