@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { Occupancy } from '@/domain/booking';
 import { MealPlan, Room } from '@/domain/room';
 import { HARDCODED_PAYMENT_MODES } from '@/hooks/usePaymentModes';
@@ -34,7 +34,7 @@ export interface ValidatedImportRow extends ParsedImportRow {
   total: number | null; // for preview display only
 }
 
-function cellToDateString(value: ExcelJS.CellValue): string {
+function cellToDateString(value: unknown): string {
   if (value instanceof Date) {
     return value.toISOString().slice(0, 10);
   }
@@ -42,12 +42,12 @@ function cellToDateString(value: ExcelJS.CellValue): string {
   return '';
 }
 
-function cellToString(value: ExcelJS.CellValue): string {
+function cellToString(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
 }
 
-function cellToNumberOrNull(value: ExcelJS.CellValue): number | null {
+function cellToNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = typeof value === 'number' ? value : parseFloat(String(value));
   return isNaN(n) ? null : n;
@@ -57,35 +57,36 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function parseImportFile(file: File): Promise<ParsedImportRow[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
 
-  const sheet = workbook.getWorksheet('Bookings Import');
+  const sheet = workbook.Sheets['Bookings Import'];
   if (!sheet) {
     throw new Error('Could not find a "Bookings Import" sheet in this file. Use the provided template.');
   }
 
+  const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
+
   const rows: ParsedImportRow[] = [];
-  sheet.eachRow((row, rowNumber) => {
+  sheetRows.forEach((values, index) => {
+    const rowNumber = index + 1; // 1-indexed to match the spreadsheet
     if (rowNumber === 1) return; // header
 
-    const values = row.values as ExcelJS.CellValue[]; // 1-indexed, [0] is empty
-    const guestName = cellToString(values[1]);
-    const occupancy = cellToString(values[2]);
-    const roomNumber = cellToString(values[3]);
-    const checkIn = cellToDateString(values[4]);
-    const checkOut = cellToDateString(values[5]);
-    const tariff = cellToNumberOrNull(values[6]);
-    const gst = cellToNumberOrNull(values[7]);
-    const addonAmount = cellToNumberOrNull(values[8]);
-    const mealPlan = cellToString(values[9]);
-    const mealPlanAmount = cellToNumberOrNull(values[10]);
-    const mealPlanGst = cellToNumberOrNull(values[11]);
-    const discount = cellToNumberOrNull(values[12]);
-    const paymentMode = cellToString(values[13]);
-    const amountPaid = cellToNumberOrNull(values[14]);
-    const paymentDate = cellToDateString(values[15]);
-    const remarks = cellToString(values[16]);
+    const guestName = cellToString(values[0]);
+    const occupancy = cellToString(values[1]);
+    const roomNumber = cellToString(values[2]);
+    const checkIn = cellToDateString(values[3]);
+    const checkOut = cellToDateString(values[4]);
+    const tariff = cellToNumberOrNull(values[5]);
+    const gst = cellToNumberOrNull(values[6]);
+    const addonAmount = cellToNumberOrNull(values[7]);
+    const mealPlan = cellToString(values[8]);
+    const mealPlanAmount = cellToNumberOrNull(values[9]);
+    const mealPlanGst = cellToNumberOrNull(values[10]);
+    const discount = cellToNumberOrNull(values[11]);
+    const paymentMode = cellToString(values[12]);
+    const amountPaid = cellToNumberOrNull(values[13]);
+    const paymentDate = cellToDateString(values[14]);
+    const remarks = cellToString(values[15]);
 
     // Skip fully blank rows
     if (!guestName && !roomNumber && tariff === null) return;
