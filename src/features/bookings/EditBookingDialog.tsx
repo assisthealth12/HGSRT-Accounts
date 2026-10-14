@@ -257,6 +257,18 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
         </DialogHeader>
         <div className="space-y-4">
           <div>
+            <Label>Company (optional)</Label>
+            <Select value={companyId} onValueChange={(v) => setCompanyId(v === '__none' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No company</SelectItem>
+                {companies.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label>Guest Name</Label>
             <Input value={guestName} onChange={(e) => setGuestName(e.target.value)} />
           </div>
@@ -405,23 +417,9 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Company (optional)</Label>
-              <Select value={companyId} onValueChange={(v) => setCompanyId(v === '__none' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">No company</SelectItem>
-                  {companies.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Remarks (optional)</Label>
-              <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-            </div>
+          <div>
+            <Label>Remarks (optional)</Label>
+            <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           </div>
 
           <div className="flex justify-between items-center pt-4 border-t">
