@@ -11,3 +11,9 @@ export interface ExpenseCategoryOption extends BaseDocument {
   sortOrder: number;
   active: boolean;
 }
+
+export interface CompanyOption extends BaseDocument {
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}

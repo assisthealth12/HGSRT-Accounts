@@ -56,6 +56,7 @@ export const bookingSchema = z.object({
   mealPlanGst: moneySchema.default(0),
   discount: moneySchema.default(0),
   remarks: z.string().optional(),
+  companyId: z.string().optional(),
 });
 
 export const paymentSchema = z.object({

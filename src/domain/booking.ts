@@ -20,6 +20,7 @@ export interface Booking extends BaseDocument {
   mealPlanGst?: Money; // GST on the meal plan portion, entered as a % in the UI
   discount: Money;
   remarks?: string;
+  companyId?: string; // optional — lets a guest's stay be billed against a company for per-company pending tracking
   source?: 'bulk-import'; // set on bookings created via Bulk Import, so they can be found/undone as a group
   importBatchId?: string; // groups all bookings created by the same Bulk Import run
 }

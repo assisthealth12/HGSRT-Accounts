@@ -8,6 +8,8 @@ import { Booking, bookingTotal, bookingReceived, bookingPending } from '@/domain
 import { useBookings, useDeleteBooking } from '@/hooks/useBookings';
 import { usePayments } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
+import { useCompanies } from '@/hooks/useCompanies';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditBookingDialog } from './EditBookingDialog';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -40,12 +42,14 @@ export function PendingDuesPage() {
   const { data: bookings = [], isLoading: isLoadingBookings } = useBookings();
   const { data: payments = [], isLoading: isLoadingPayments } = usePayments();
   const { data: rooms = [] } = useRooms();
+  const { data: companies = [] } = useCompanies();
   const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [daysFilter, setDaysFilter] = useState<DaysFilter>('all');
   const [checkInFrom, setCheckInFrom] = useState('');
   const [checkInTo, setCheckInTo] = useState('');
+  const [companyFilter, setCompanyFilter] = useState(''); // '' = all, '__none' = no company
 
   const isLoading = isLoadingBookings || isLoadingPayments;
 
@@ -75,11 +79,38 @@ export function PendingDuesPage() {
       if (r.daysOut < minDays) return false;
       if (checkInFrom && r.booking.checkIn < checkInFrom) return false;
       if (checkInTo && r.booking.checkIn > checkInTo) return false;
+      if (companyFilter === '__none' && r.booking.companyId) return false;
+      if (companyFilter && companyFilter !== '__none' && r.booking.companyId !== companyFilter) return false;
       return true;
     });
-  }, [allPendingRows, daysFilter, checkInFrom, checkInTo]);
+  }, [allPendingRows, daysFilter, checkInFrom, checkInTo, companyFilter]);
 
   const totalPending = rows.reduce((acc, r) => acc + r.pending, 0);
+
+  // Per-company pending breakdown — always computed off the days/date-filtered set
+  // (ignoring the company dropdown itself) so the summary always shows every company
+  // at once, and clicking one just narrows the table below it.
+  const companyBreakdown = useMemo(() => {
+    const minDays = daysFilter === 'all' ? 0 : parseInt(daysFilter, 10);
+    const dateFiltered = allPendingRows.filter(r => {
+      if (r.daysOut < minDays) return false;
+      if (checkInFrom && r.booking.checkIn < checkInFrom) return false;
+      if (checkInTo && r.booking.checkIn > checkInTo) return false;
+      return true;
+    });
+    const byCompany = new Map<string, number>(); // key: companyId or '__none'
+    dateFiltered.forEach(r => {
+      const key = r.booking.companyId || '__none';
+      byCompany.set(key, (byCompany.get(key) || 0) + r.pending);
+    });
+    return Array.from(byCompany.entries())
+      .map(([key, pending]) => ({
+        key,
+        name: key === '__none' ? 'No Company' : companies.find(c => c.id === key)?.name || 'Unknown Company',
+        pending,
+      }))
+      .sort((a, b) => b.pending - a.pending);
+  }, [allPendingRows, daysFilter, checkInFrom, checkInTo, companies]);
 
   const columns: ColumnDef<PendingRow>[] = [
     { id: 'guestName', accessorFn: (row) => row.booking.guestName, header: 'Guest' },
@@ -90,6 +121,15 @@ export function PendingDuesPage() {
         const ids = row.original.booking.roomIds || ((row.original.booking as any).roomId ? [(row.original.booking as any).roomId] : []);
         return ids.map(id => rooms.find(r => r.id === id)?.roomNumber || id).join(', ');
       }
+    },
+    {
+      id: 'company',
+      header: 'Company',
+      cell: ({ row }) => {
+        const companyId = row.original.booking.companyId;
+        if (!companyId) return <span className="text-gray-400">—</span>;
+        return companies.find(c => c.id === companyId)?.name || 'Unknown';
+      },
     },
     { id: 'checkIn', header: 'Check-In', cell: ({ row }) => row.original.booking.checkIn },
     { id: 'checkOut', header: 'Check-Out', cell: ({ row }) => row.original.booking.checkOut },
@@ -175,12 +215,42 @@ export function PendingDuesPage() {
           <Label className="text-xs">Check-in To</Label>
           <Input type="date" value={checkInTo} onChange={e => setCheckInTo(e.target.value)} className="h-9" />
         </div>
-        {(daysFilter !== 'all' || checkInFrom || checkInTo) && (
-          <Button variant="ghost" size="sm" onClick={() => { setDaysFilter('all'); setCheckInFrom(''); setCheckInTo(''); }}>
+        <div className="flex flex-col gap-1.5 min-w-[180px]">
+          <Label className="text-xs">Company</Label>
+          <Select value={companyFilter || '__all'} onValueChange={(v) => setCompanyFilter(v === '__all' ? '' : v)}>
+            <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">All</SelectItem>
+              <SelectItem value="__none">No Company</SelectItem>
+              {companies.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {(daysFilter !== 'all' || checkInFrom || checkInTo || companyFilter) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDaysFilter('all'); setCheckInFrom(''); setCheckInTo(''); setCompanyFilter(''); }}>
             Clear Filters
           </Button>
         )}
       </div>
+
+      {companyBreakdown.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {companyBreakdown.map(c => (
+            <button
+              key={c.key}
+              onClick={() => setCompanyFilter(prev => prev === c.key ? '' : c.key)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
+                companyFilter === c.key ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-200 hover:border-emerald-300'
+              }`}
+            >
+              <span className={companyFilter === c.key ? 'text-white' : 'text-gray-600'}>{c.name}</span>
+              <span className={`font-bold ${companyFilter === c.key ? 'text-white' : 'text-destructive'}`}>{formatINR(c.pending)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <LoadingState label="Loading pending dues..." />

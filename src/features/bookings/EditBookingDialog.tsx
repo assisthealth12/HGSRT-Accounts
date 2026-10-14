@@ -16,6 +16,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useBookingsInRange, useUpdateBooking } from '@/hooks/useBookings';
 import { useAddons, Addon } from '@/hooks/useAddons';
+import { useCompanies } from '@/hooks/useCompanies';
 import { toast } from '@/hooks/use-toast';
 import { Check, Plus } from 'lucide-react';
 
@@ -43,9 +44,11 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
   const [mealPlanAmount, setMealPlanAmount] = useState('');
   const [mealPlanGstPercent, setMealPlanGstPercent] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState('');
 
   const { data: addons = [] } = useAddons();
+  const { data: companies = [] } = useCompanies();
 
   const overlapWindowStart = useMemo(() => {
     const d = new Date(checkIn || new Date().toISOString().slice(0, 10));
@@ -82,6 +85,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
       const mealPlanGstPct = mealPlanBase > 0 ? Math.round(((booking.mealPlanGst || 0) / mealPlanBase) * 100) : 0;
       setMealPlanGstPercent(mealPlanGstPct.toString());
       setRemarks(booking.remarks || '');
+      setCompanyId(booking.companyId || '');
       setError('');
       justLoadedRef.current = true;
     }
@@ -235,6 +239,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
           mealPlanGst: mealPlanGstCents,
           discount: discountCents,
           remarks: remarks.trim() || undefined,
+          companyId: companyId || undefined,
         }
       });
       toast({ title: 'Booking updated', description: `${guestName.trim()} — ${formatINR(total)}` });
@@ -400,9 +405,23 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
             </div>
           </div>
 
-          <div>
-            <Label>Remarks (optional)</Label>
-            <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Company (optional)</Label>
+              <Select value={companyId} onValueChange={(v) => setCompanyId(v === '__none' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No company</SelectItem>
+                  {companies.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Remarks (optional)</Label>
+              <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </div>
           </div>
 
           <div className="flex justify-between items-center pt-4 border-t">

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useExpenseCategories, useCreateExpenseCategory, useDeleteExpenseCategory } from '@/hooks/useExpenseCategories';
+import { useCompanies, useCreateCompany, useDeleteCompany } from '@/hooks/useCompanies';
 import { useAddons, useCreateAddon, useDeleteAddon } from '@/hooks/useAddons';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useCreateRoomType, useUpdateRoomType, useDeleteRoomType } from '@/hooks/useCreateRoomType';
@@ -711,6 +712,9 @@ export function SettingsPage() {
   const { data: expenseCategories = [] } = useExpenseCategories();
   const { mutateAsync: createExpenseCategory, isPending: isAddingCategory } = useCreateExpenseCategory();
   const { mutateAsync: deleteExpenseCategory } = useDeleteExpenseCategory();
+  const { data: companies = [] } = useCompanies();
+  const { mutateAsync: createCompany, isPending: isAddingCompany } = useCreateCompany();
+  const { mutateAsync: deleteCompany } = useDeleteCompany();
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
@@ -739,6 +743,13 @@ export function SettingsPage() {
             onAdd={createExpenseCategory}
             onDelete={deleteExpenseCategory}
             isAdding={isAddingCategory}
+          />
+          <SimpleLookupCard
+            title="Companies"
+            items={companies}
+            onAdd={createCompany}
+            onDelete={deleteCompany}
+            isAdding={isAddingCompany}
           />
         </TabsContent>
       </Tabs>

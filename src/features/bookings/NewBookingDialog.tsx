@@ -16,6 +16,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { useBookingsInRange, useCreateBooking } from '@/hooks/useBookings';
 import { usePaymentModes } from '@/hooks/usePaymentModes';
+import { useCompanies } from '@/hooks/useCompanies';
 import { useRecordPayment } from '@/hooks/usePayments';
 import { useAddons, Addon } from '@/hooks/useAddons';
 import { toast } from '@/hooks/use-toast';
@@ -34,6 +35,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
   const { data: paymentModes = [] } = usePaymentModes();
+  const { data: companies = [] } = useCompanies();
   const { mutateAsync: createBooking, isPending } = useCreateBooking();
   const { mutateAsync: recordPayment, isPending: isPaymentPending } = useRecordPayment();
 
@@ -51,6 +53,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [mealPlanAmount, setMealPlanAmount] = useState('');
   const [mealPlanGstPercent, setMealPlanGstPercent] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [companyId, setCompanyId] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [paymentModeId, setPaymentModeId] = useState('');
   const [paidOn, setPaidOn] = useState(todayISO());
@@ -193,7 +196,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
   const reset = () => {
     setGuestName(''); setOccupancy('Single'); setMealPlan('EP'); setCheckIn(todayISO()); setCheckOut(todayISO());
     setRoomIds([]); setRoomAddons({}); setTariff(''); setDiscount(''); setGst(''); setAddonAmount('');
-    setMealPlanAmount(''); setMealPlanGstPercent(''); setRemarks('');
+    setMealPlanAmount(''); setMealPlanGstPercent(''); setRemarks(''); setCompanyId('');
     setAmountPaid(''); setPaymentModeId(''); setPaidOn(todayISO()); setReferenceNo(''); setError('');
   };
 
@@ -226,6 +229,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
         mealPlanGst: mealPlanGstCents,
         discount: discountCents,
         remarks: remarks.trim() || undefined,
+        companyId: companyId || undefined,
       });
 
       if (amountPaidCents > 0) {
@@ -403,9 +407,23 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
             </div>
           </div>
 
-          <div>
-            <Label>Remarks (optional)</Label>
-            <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Company (optional)</Label>
+              <Select value={companyId} onValueChange={(v) => setCompanyId(v === '__none' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No company</SelectItem>
+                  {companies.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Remarks (optional)</Label>
+              <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </div>
           </div>
 
           <div className="pt-4 border-t">
