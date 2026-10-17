@@ -153,16 +153,21 @@ function AddonsCard() {
 }
 
 const EMPTY_RATES: OccupancyRates = {
-  singleEP: 0, singleCP: 0, doubleEP: 0, doubleCP: 0, tripleEP: 0, tripleCP: 0,
+  singleEP: 0, singleCP: 0, singleMAP: 0,
+  doubleEP: 0, doubleCP: 0, doubleMAP: 0,
+  tripleEP: 0, tripleCP: 0, tripleMAP: 0,
 };
 
 const RATE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
   { key: 'singleEP', label: 'Single — Room Only (EP)' },
   { key: 'singleCP', label: 'Single — Room + Breakfast (CP)' },
+  { key: 'singleMAP', label: 'Single — Room + Breakfast + Dinner (MAP)' },
   { key: 'doubleEP', label: 'Double — Room Only (EP)' },
   { key: 'doubleCP', label: 'Double — Room + Breakfast (CP)' },
+  { key: 'doubleMAP', label: 'Double — Room + Breakfast + Dinner (MAP)' },
   { key: 'tripleEP', label: 'Triple — Room Only (EP)' },
   { key: 'tripleCP', label: 'Triple — Room + Breakfast (CP)' },
+  { key: 'tripleMAP', label: 'Triple — Room + Breakfast + Dinner (MAP)' },
 ];
 
 function RoomTypeFormDialog({
@@ -181,7 +186,9 @@ function RoomTypeFormDialog({
 
   const [name, setName] = useState('');
   const [rates, setRates] = useState<Record<keyof OccupancyRates, string>>({
-    singleEP: '', singleCP: '', doubleEP: '', doubleCP: '', tripleEP: '', tripleCP: '',
+    singleEP: '', singleCP: '', singleMAP: '',
+    doubleEP: '', doubleCP: '', doubleMAP: '',
+    tripleEP: '', tripleCP: '', tripleMAP: '',
   });
 
   React.useEffect(() => {
@@ -191,10 +198,13 @@ function RoomTypeFormDialog({
       setRates({
         singleEP: r.singleEP ? String(r.singleEP / 100) : '',
         singleCP: r.singleCP ? String(r.singleCP / 100) : '',
+        singleMAP: r.singleMAP ? String(r.singleMAP / 100) : '',
         doubleEP: r.doubleEP ? String(r.doubleEP / 100) : '',
         doubleCP: r.doubleCP ? String(r.doubleCP / 100) : '',
+        doubleMAP: r.doubleMAP ? String(r.doubleMAP / 100) : '',
         tripleEP: r.tripleEP ? String(r.tripleEP / 100) : '',
         tripleCP: r.tripleCP ? String(r.tripleCP / 100) : '',
+        tripleMAP: r.tripleMAP ? String(r.tripleMAP / 100) : '',
       });
     }
   }, [open, roomType]);
@@ -206,10 +216,13 @@ function RoomTypeFormDialog({
     const ratesPayload: OccupancyRates = {
       singleEP: Math.round(parseFloat(rates.singleEP || '0') * 100),
       singleCP: Math.round(parseFloat(rates.singleCP || '0') * 100),
+      singleMAP: Math.round(parseFloat(rates.singleMAP || '0') * 100),
       doubleEP: Math.round(parseFloat(rates.doubleEP || '0') * 100),
       doubleCP: Math.round(parseFloat(rates.doubleCP || '0') * 100),
+      doubleMAP: Math.round(parseFloat(rates.doubleMAP || '0') * 100),
       tripleEP: Math.round(parseFloat(rates.tripleEP || '0') * 100),
       tripleCP: Math.round(parseFloat(rates.tripleCP || '0') * 100),
+      tripleMAP: Math.round(parseFloat(rates.tripleMAP || '0') * 100),
     };
 
     if (roomType) {
@@ -306,10 +319,13 @@ function RoomTypesCard() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                 <div className="text-gray-500">Single EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.singleEP)}</span></div>
                 <div className="text-gray-500">Single CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.singleCP)}</span></div>
+                <div className="text-gray-500">Single MAP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.singleMAP || 0)}</span></div>
                 <div className="text-gray-500">Double EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.doubleEP)}</span></div>
                 <div className="text-gray-500">Double CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.doubleCP)}</span></div>
+                <div className="text-gray-500">Double MAP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.doubleMAP || 0)}</span></div>
                 <div className="text-gray-500">Triple EP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.tripleEP)}</span></div>
                 <div className="text-gray-500">Triple CP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.tripleCP)}</span></div>
+                <div className="text-gray-500">Triple MAP <span className="float-right font-semibold text-gray-800">{formatINR(rt.rates.tripleMAP || 0)}</span></div>
               </div>
             ) : (
               <span className="text-xs text-muted-foreground">No rates set — rooms of this type use their individual Base Tariff.</span>
@@ -351,6 +367,9 @@ function RoomTypeRatesPreview({ roomType }: { roomType: RoomType | undefined }) 
         <div>Single CP <span className="font-semibold">{formatINR(r.singleCP)}</span></div>
         <div>Double CP <span className="font-semibold">{formatINR(r.doubleCP)}</span></div>
         <div>Triple CP <span className="font-semibold">{formatINR(r.tripleCP)}</span></div>
+        <div>Single MAP <span className="font-semibold">{formatINR(r.singleMAP || 0)}</span></div>
+        <div>Double MAP <span className="font-semibold">{formatINR(r.doubleMAP || 0)}</span></div>
+        <div>Triple MAP <span className="font-semibold">{formatINR(r.tripleMAP || 0)}</span></div>
       </div>
     </div>
   );

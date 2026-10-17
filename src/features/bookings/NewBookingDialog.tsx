@@ -132,11 +132,11 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
     setTariff(totalTariffCents > 0 ? (totalTariffCents * nights / 100).toString() : '');
   }, [roomIds, nights, rooms, roomTypes, occupancy, mealPlan]);
 
-  // When CP (Room + Breakfast) is picked, suggest the Meal Plan Allocation as the
-  // CP−EP rate difference across selected rooms — still a plain editable field,
+  // When CP/MAP (meals included) is picked, suggest the Meal Plan Allocation as the
+  // plan−EP rate difference across selected rooms — still a plain editable field,
   // so staff can adjust it afterward. Switching back to EP clears the suggestion.
   useEffect(() => {
-    if (mealPlan !== 'CP') {
+    if (mealPlan === 'EP') {
       setMealPlanAmount('');
       return;
     }
@@ -144,7 +144,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
       const r = rooms.find(room => room.id === rId);
       if (!r) return sum;
       const rt = roomTypes.find(t => t.id === r.roomTypeId);
-      return sum + mealPlanDeltaFor(rt, occupancy);
+      return sum + mealPlanDeltaFor(rt, occupancy, mealPlan);
     }, 0);
     setMealPlanAmount(totalDeltaCents > 0 ? (totalDeltaCents * nights / 100).toString() : '');
   }, [roomIds, nights, rooms, roomTypes, occupancy, mealPlan]);
@@ -303,6 +303,7 @@ export function NewBookingDialog({ open, onOpenChange }: { open: boolean; onOpen
                 <SelectContent>
                   <SelectItem value="EP">Room Only (EP)</SelectItem>
                   <SelectItem value="CP">Room + Breakfast (CP)</SelectItem>
+                  <SelectItem value="MAP">Room + Breakfast + Dinner (MAP)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -18,11 +18,12 @@ const HEADERS: [string, number][] = [
   ['Amount Paid', 13],
   ['Payment Date', 13],
   ['Remarks', 25],
+  ['Company', 20],
 ];
 
 const EXAMPLE_ROWS = [
-  ['MR. ANAR SINGH', 'Single', '103', '2026-09-19', '2026-09-20', 2400, 300, 0, '', '', '', 0, 'B2C', 2700, '2026-09-19', ''],
-  ['ASHUTHOSH', 'Double', '303', '2026-09-25', '2026-09-26', 2800, 0, 0, '', '', '', 0, 'Pending', 0, '', 'Settle while checkout'],
+  ['MR. ANAR SINGH', 'Single', '103', '2026-09-19', '2026-09-20', 2400, 300, 0, 'CP', 300, '', 0, 'B2C', 2700, '2026-09-19', '', ''],
+  ['ASHUTHOSH', 'Double', '303', '2026-09-25', '2026-09-26', 2800, 0, 0, '', '', '', 0, 'Pending', 0, '', 'Settle while checkout', 'ABC Travels'],
 ];
 
 export async function downloadImportTemplate() {
@@ -52,9 +53,11 @@ export async function downloadImportTemplate() {
     '4. Room Number must exactly match a room already configured in Settings > Physical Rooms.',
     '5. Dates must be YYYY-MM-DD (e.g. 2026-09-19).',
     '6. Payment Mode must be one of: Cash, UPI, Card, Bank Transfer, Scanner, OTA Bank Transfer, B2C, Pending.',
-    '7. One row = one guest booking. For multi-room bookings, add one row per room for now.',
-    '8. Pending amount is never entered — it is always calculated automatically as Total minus Amount Paid.',
-    '9. When ready, go to Bookings > Bulk Import and upload this file. You will see a full preview — nothing is saved until you confirm.',
+    '7. Meal Plan, if used, must be EP (room only), CP (room + breakfast), or MAP (room + breakfast + dinner).',
+    '8. Company is optional. If filled, it must exactly match a company already added in Settings > System Lists > Companies — add it there first if it doesn\'t exist yet.',
+    '9. One row = one guest booking. For multi-room bookings, add one row per room for now.',
+    '10. Pending amount is never entered — it is always calculated automatically as Total minus Amount Paid.',
+    '11. When ready, go to Bookings > Bulk Import and upload this file. You will see a full preview — nothing is saved until you confirm.',
   ];
   lines.forEach((line, i) => {
     const row = inst.addRow([line]);

@@ -7,6 +7,7 @@ import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useRooms } from '@/hooks/useRooms';
+import { useCompanies } from '@/hooks/useCompanies';
 import { useBookingsInRange } from '@/hooks/useBookings';
 import { formatINR } from '@/domain/money';
 import { parseImportFile, validateRows, ValidatedImportRow } from '@/lib/bulkImportBookings';
@@ -24,6 +25,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const { data: rooms = [] } = useRooms();
+  const { data: companies = [] } = useCompanies();
 
   const [stage, setStage] = useState<Stage>('pick');
   const [fileName, setFileName] = useState('');
@@ -81,7 +83,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
     setFileName(file.name);
     try {
       const parsed = await parseImportFile(file);
-      const validated = validateRows(parsed, rooms);
+      const validated = validateRows(parsed, rooms, companies);
       setRows(validated);
       setStage('preview');
     } catch (err: any) {
@@ -134,6 +136,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
         };
         if (row.mealPlan) bookingData.mealPlan = row.mealPlan;
         if (row.remarks) bookingData.remarks = row.remarks;
+        if (row.companyId) bookingData.companyId = row.companyId;
         batch.set(bookingRef, bookingData);
 
         if (row.amountPaid && row.amountPaid > 0) {
@@ -210,6 +213,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
                   <tr>
                     <th className="p-2 text-left">Row</th>
                     <th className="p-2 text-left">Guest</th>
+                    <th className="p-2 text-left">Company</th>
                     <th className="p-2 text-left">Room</th>
                     <th className="p-2 text-left">Check-in → Check-out</th>
                     <th className="p-2 text-left">Total</th>
@@ -224,6 +228,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <tr key={row.rowNumber} className={`border-t ${row.errors.length > 0 ? 'bg-red-50' : ''}`}>
                       <td className="p-2">{row.rowNumber}</td>
                       <td className="p-2">{row.guestName || '—'}</td>
+                      <td className="p-2">{row.companyName || '—'}</td>
                       <td className="p-2">{row.roomNumber || '—'}</td>
                       <td className="p-2 whitespace-nowrap">{row.checkIn} → {row.checkOut}</td>
                       <td className="p-2">{row.total !== null ? formatINR(Math.round(row.total * 100)) : '—'}</td>

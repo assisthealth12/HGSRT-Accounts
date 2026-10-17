@@ -7,10 +7,13 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
 export const occupancyRatesSchema = z.object({
   singleEP: moneySchema,
   singleCP: moneySchema,
+  singleMAP: moneySchema,
   doubleEP: moneySchema,
   doubleCP: moneySchema,
+  doubleMAP: moneySchema,
   tripleEP: moneySchema,
   tripleCP: moneySchema,
+  tripleMAP: moneySchema,
 });
 
 export const roomTypeSchema = z.object({
@@ -43,7 +46,7 @@ export const roomSchema = z.object({
 export const bookingSchema = z.object({
   guestName: z.string().min(2, 'Guest name is required'),
   occupancy: z.enum(['Single', 'Double', 'Triple']),
-  mealPlan: z.enum(['EP', 'CP']).default('EP'),
+  mealPlan: z.enum(['EP', 'CP', 'MAP']).default('EP'),
   roomIds: z.array(z.string()).min(1, 'At least one room is required'),
   roomAddons: z.record(z.array(addonSelectedSchema)).optional(),
   checkIn: dateSchema,

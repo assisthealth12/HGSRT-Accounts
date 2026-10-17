@@ -2,9 +2,10 @@ import * as XLSX from 'xlsx';
 import { Occupancy } from '@/domain/booking';
 import { MealPlan, Room } from '@/domain/room';
 import { HARDCODED_PAYMENT_MODES } from '@/hooks/usePaymentModes';
+import { CompanyOption } from '@/domain/lookups';
 
 const VALID_OCCUPANCY: Occupancy[] = ['Single', 'Double', 'Triple'];
-const VALID_MEAL_PLAN: MealPlan[] = ['EP', 'CP'];
+const VALID_MEAL_PLAN: MealPlan[] = ['EP', 'CP', 'MAP'];
 
 export interface ParsedImportRow {
   rowNumber: number; // 1-indexed within the sheet, for error messages
@@ -24,12 +25,14 @@ export interface ParsedImportRow {
   amountPaid: number | null;
   paymentDate: string;
   remarks: string;
+  companyName: string;
 }
 
 export interface ValidatedImportRow extends ParsedImportRow {
   errors: string[];
   roomId: string | null;
   paymentModeId: string | null;
+  companyId: string | null;
   nights: number | null;
   total: number | null; // for preview display only
 }
@@ -87,6 +90,7 @@ export async function parseImportFile(file: File): Promise<ParsedImportRow[]> {
     const amountPaid = cellToNumberOrNull(values[13]);
     const paymentDate = cellToDateString(values[14]);
     const remarks = cellToString(values[15]);
+    const companyName = cellToString(values[16]);
 
     // Skip fully blank rows
     if (!guestName && !roomNumber && tariff === null) return;
@@ -109,6 +113,7 @@ export async function parseImportFile(file: File): Promise<ParsedImportRow[]> {
       amountPaid,
       paymentDate,
       remarks,
+      companyName,
     });
   });
 
@@ -118,6 +123,7 @@ export async function parseImportFile(file: File): Promise<ParsedImportRow[]> {
 export function validateRows(
   rows: ParsedImportRow[],
   activeRooms: Room[],
+  companies: CompanyOption[] = [],
 ): ValidatedImportRow[] {
   const roomsByNumber = new Map<string, Room[]>();
   activeRooms.forEach(r => {
@@ -128,6 +134,8 @@ export function validateRows(
   const paymentModesByName = new Map(
     HARDCODED_PAYMENT_MODES.map(pm => [pm.name.toLowerCase(), pm.id]),
   );
+
+  const companiesByName = new Map(companies.map(c => [c.name.trim().toLowerCase(), c.id]));
 
   return rows.map((row): ValidatedImportRow => {
     const errors: string[] = [];
@@ -169,7 +177,17 @@ export function validateRows(
     if (row.discount !== null && row.discount < 0) errors.push('Discount cannot be negative');
 
     if (row.mealPlan && !VALID_MEAL_PLAN.includes(row.mealPlan as MealPlan)) {
-      errors.push(`Meal Plan must be EP or CP (got "${row.mealPlan}")`);
+      errors.push(`Meal Plan must be EP, CP, or MAP (got "${row.mealPlan}")`);
+    }
+
+    // Company is optional — an unrecognized name is flagged but doesn't block the row,
+    // since the booking is still valid without one.
+    let companyId: string | null = null;
+    if (row.companyName) {
+      companyId = companiesByName.get(row.companyName.trim().toLowerCase()) || null;
+      if (!companyId) {
+        errors.push(`Company "${row.companyName}" not found in Settings > Companies — add it there first, or leave this blank`);
+      }
     }
 
     let paymentModeId: string | null = null;
@@ -189,6 +207,6 @@ export function validateRows(
       ? row.tariff + (row.gst || 0) + (row.addonAmount || 0) + (row.mealPlanAmount || 0) + (row.mealPlanGst || 0) - (row.discount || 0)
       : null;
 
-    return { ...row, errors, roomId, paymentModeId, nights, total };
+    return { ...row, errors, roomId, paymentModeId, companyId, nights, total };
   });
 }

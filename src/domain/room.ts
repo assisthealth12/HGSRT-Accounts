@@ -1,16 +1,19 @@
 import { BaseDocument } from './base';
 import { Money } from './money';
 
-export type MealPlan = 'EP' | 'CP'; // EP = Room Only, CP = Room + Breakfast
+export type MealPlan = 'EP' | 'CP' | 'MAP'; // EP = Room Only, CP = Room + Breakfast, MAP = Room + Breakfast + one more meal
 export type RoomOccupancy = 'Single' | 'Double' | 'Triple';
 
 export interface OccupancyRates {
   singleEP: Money;
   singleCP: Money;
+  singleMAP: Money;
   doubleEP: Money;
   doubleCP: Money;
+  doubleMAP: Money;
   tripleEP: Money;
   tripleCP: Money;
+  tripleMAP: Money;
 }
 
 export interface RoomType extends BaseDocument {
@@ -42,17 +45,18 @@ export function rateFor(
   return typeof rate === 'number' ? rate : fallback;
 }
 
-// The CP rate includes breakfast the EP rate doesn't — this delta is what
-// auto-suggests the Meal Plan Allocation amount when a guest picks CP.
+// CP/MAP rates include meals the EP rate doesn't — this delta is what auto-suggests
+// the Meal Plan Allocation amount when a guest picks CP or MAP.
 export function mealPlanDeltaFor(
   roomType: Pick<RoomType, 'rates'> | undefined,
-  occupancy: RoomOccupancy
+  occupancy: RoomOccupancy,
+  mealPlan: MealPlan = 'CP'
 ): Money {
-  if (!roomType?.rates) return 0;
-  const cpKey = `${occupancy.toLowerCase()}CP` as keyof OccupancyRates;
+  if (!roomType?.rates || mealPlan === 'EP') return 0;
+  const planKey = `${occupancy.toLowerCase()}${mealPlan}` as keyof OccupancyRates;
   const epKey = `${occupancy.toLowerCase()}EP` as keyof OccupancyRates;
-  const cp = roomType.rates[cpKey];
+  const plan = roomType.rates[planKey];
   const ep = roomType.rates[epKey];
-  if (typeof cp !== 'number' || typeof ep !== 'number') return 0;
-  return Math.max(0, cp - ep);
+  if (typeof plan !== 'number' || typeof ep !== 'number') return 0;
+  return Math.max(0, plan - ep);
 }

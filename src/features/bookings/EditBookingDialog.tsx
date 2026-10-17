@@ -115,10 +115,10 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
     setTariff(totalTariffCents > 0 ? ((totalTariffCents * nights) / 100).toString() : '');
   };
 
-  // When CP (Room + Breakfast) is picked, suggest the Meal Plan Allocation as the
-  // CP−EP rate difference across selected rooms — still a plain editable field.
+  // When CP/MAP (meals included) is picked, suggest the Meal Plan Allocation as the
+  // plan−EP rate difference across selected rooms — still a plain editable field.
   const recalcMealPlanSuggestion = (ids: string[]) => {
-    if (mealPlan !== 'CP') {
+    if (mealPlan === 'EP') {
       setMealPlanAmount('0');
       return;
     }
@@ -126,7 +126,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
       const r = rooms.find(room => room.id === rId);
       if (!r) return sum;
       const rt = roomTypes.find(t => t.id === r.roomTypeId);
-      return sum + mealPlanDeltaFor(rt, occupancy);
+      return sum + mealPlanDeltaFor(rt, occupancy, mealPlan);
     }, 0);
     setMealPlanAmount(totalDeltaCents > 0 ? ((totalDeltaCents * nights) / 100).toString() : '');
   };
@@ -301,6 +301,7 @@ export function EditBookingDialog({ booking, onOpenChange }: { booking: Booking 
                 <SelectContent>
                   <SelectItem value="EP">Room Only (EP)</SelectItem>
                   <SelectItem value="CP">Room + Breakfast (CP)</SelectItem>
+                  <SelectItem value="MAP">Room + Breakfast + Dinner (MAP)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
