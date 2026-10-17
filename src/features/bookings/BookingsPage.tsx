@@ -11,6 +11,8 @@ import { Booking, bookingTotal, bookingPending } from '@/domain/booking';
 import { useActiveBookingsAround, useBookingsInRange, useDeleteBooking } from '@/hooks/useBookings';
 import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
+import { useCompanies } from '@/hooks/useCompanies';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NewBookingDialog } from './NewBookingDialog';
 import { BulkImportDialog } from './BulkImportDialog';
 import { BulkDeleteDialog } from './BulkDeleteDialog';
@@ -36,12 +38,14 @@ function GuestRegisterTab() {
   }, [date]);
   const { data: payments = [] } = usePaymentsInRange(paymentsLookbackStart, date);
   const { data: rooms = [] } = useRooms();
+  const { data: companies = [] } = useCompanies();
   const { mutateAsync: deleteBooking } = useDeleteBooking();
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [payingBooking, setPayingBooking] = useState<Booking | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [companyFilter, setCompanyFilter] = useState(''); // '' = all, '__none' = no company
 
   const paymentsByBooking = useMemo(() => {
     const map = new Map<string, typeof payments>();
@@ -49,14 +53,22 @@ function GuestRegisterTab() {
     return map;
   }, [payments]);
 
-  const rowsForDate = bookings.filter(b => b.checkIn <= date && (b.checkOut > date || b.checkIn === date));
+  const rowsForDateAll = bookings.filter(b => b.checkIn <= date && (b.checkOut > date || b.checkIn === date));
+  const rowsForDate = rowsForDateAll.filter(b => {
+    if (!companyFilter) return true;
+    if (companyFilter === '__none') return !b.companyId;
+    return b.companyId === companyFilter;
+  });
   const arrivalsCount = bookings.filter(b => b.checkIn === date).length;
   const departuresCount = bookings.filter(b => b.checkOut === date).length;
-  const occupiedRoomsCount = new Set(rowsForDate.flatMap(b => b.roomIds || [])).size;
+  const occupiedRoomsCount = new Set(rowsForDateAll.flatMap(b => b.roomIds || [])).size;
   const availableRoomsCount = Math.max(rooms.length - occupiedRoomsCount, 0);
+
+  const companyName = (companyId?: string) => companyId ? (companies.find(c => c.id === companyId)?.name || 'Unknown') : '—';
 
   const columns: ColumnDef<Booking>[] = [
     { accessorKey: 'guestName', header: 'Guest' },
+    { id: 'company', header: 'Company', cell: ({ row }) => companyName(row.original.companyId) },
     { accessorKey: 'occupancy', header: 'Occupancy' },
     {
       id: 'room',
@@ -109,10 +121,25 @@ function GuestRegisterTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-end">
-        <div className="max-w-xs">
-          <Label>Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div className="flex justify-between items-end flex-wrap gap-3">
+        <div className="flex items-end gap-3">
+          <div className="max-w-xs">
+            <Label>Date</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="min-w-[180px]">
+            <Label>Company</Label>
+            <Select value={companyFilter || '__all'} onValueChange={(v) => setCompanyFilter(v === '__all' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">All</SelectItem>
+                <SelectItem value="__none">No Company</SelectItem>
+                {companies.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setIsBulkDeleteOpen(true)}>Bulk Delete</Button>
@@ -127,6 +154,16 @@ function GuestRegisterTab() {
         <StatCard label="Occupied Rooms" value={String(occupiedRoomsCount)} icon={DoorOpen} />
         <StatCard label="Available Rooms" value={String(availableRoomsCount)} tone="success" icon={BedDouble} />
       </div>
+
+      {companyFilter && (
+        <div className="flex flex-wrap gap-4 bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm">
+          <span className="text-emerald-800 font-semibold">
+            {companyFilter === '__none' ? 'No Company' : companies.find(c => c.id === companyFilter)?.name} on {date}:
+          </span>
+          <span>Revenue <span className="font-bold text-gray-900">{formatINR(rowsForDate.reduce((acc, b) => acc + bookingTotal(b), 0))}</span></span>
+          <span>Pending <span className="font-bold text-destructive">{formatINR(rowsForDate.reduce((acc, b) => acc + bookingPending(b, paymentsByBooking.get(b.id) || []), 0))}</span></span>
+        </div>
+      )}
 
       {isLoading ? (
         <LoadingState label="Loading bookings..." />
@@ -155,14 +192,43 @@ const MONTHLY_PAGE_SIZE = 10;
 function MonthlyRevenueTab() {
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [page, setPage] = useState(0);
-  const { data: bookings = [] } = useBookingsInRange(`${month}-01`, `${month}-31`);
+  const [companyFilter, setCompanyFilter] = useState(''); // '' = all, '__none' = no company
+  const { data: allBookings = [] } = useBookingsInRange(`${month}-01`, `${month}-31`);
   const { data: payments = [] } = usePaymentsInRange(`${month}-01`, `${month}-31`);
+  const { data: companies = [] } = useCompanies();
 
   const paymentsByBooking = useMemo(() => {
     const map = new Map<string, typeof payments>();
     payments.forEach(p => map.set(p.bookingId, [...(map.get(p.bookingId) || []), p]));
     return map;
   }, [payments]);
+
+  // Per-company totals for the whole month, independent of the dropdown, so the
+  // breakdown row always shows every company at once — clicking one just narrows
+  // the day-by-day table below it.
+  const companyBreakdown = useMemo(() => {
+    const byCompany = new Map<string, { sales: number; pending: number }>();
+    allBookings.forEach(b => {
+      const key = b.companyId || '__none';
+      const sales = bookingTotal(b);
+      const pending = bookingPending(b, paymentsByBooking.get(b.id) || []);
+      const prev = byCompany.get(key) || { sales: 0, pending: 0 };
+      byCompany.set(key, { sales: prev.sales + sales, pending: prev.pending + pending });
+    });
+    return Array.from(byCompany.entries())
+      .map(([key, v]) => ({
+        key,
+        name: key === '__none' ? 'No Company' : companies.find(c => c.id === key)?.name || 'Unknown Company',
+        ...v,
+      }))
+      .sort((a, b) => b.sales - a.sales);
+  }, [allBookings, paymentsByBooking, companies]);
+
+  const bookings = useMemo(() => {
+    if (!companyFilter) return allBookings;
+    if (companyFilter === '__none') return allBookings.filter(b => !b.companyId);
+    return allBookings.filter(b => b.companyId === companyFilter);
+  }, [allBookings, companyFilter]);
 
   const rows = useMemo(() => {
     const dates = Array.from(new Set(
@@ -192,13 +258,53 @@ function MonthlyRevenueTab() {
 
   return (
     <div className="space-y-4">
-      <div className="max-w-xs">
-        <Label>Month</Label>
-        <Input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setPage(0); }} />
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="max-w-xs">
+          <Label>Month</Label>
+          <Input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setPage(0); }} />
+        </div>
+        <div className="min-w-[180px]">
+          <Label>Company</Label>
+          <Select value={companyFilter || '__all'} onValueChange={(v) => { setCompanyFilter(v === '__all' ? '' : v); setPage(0); }}>
+            <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">All</SelectItem>
+              <SelectItem value="__none">No Company</SelectItem>
+              {companies.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
+      {companyBreakdown.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {companyBreakdown.map(c => (
+            <button
+              key={c.key}
+              onClick={() => { setCompanyFilter(prev => prev === c.key ? '' : c.key); setPage(0); }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
+                companyFilter === c.key ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-200 hover:border-emerald-300'
+              }`}
+            >
+              <span className={companyFilter === c.key ? 'text-white' : 'text-gray-600'}>{c.name}</span>
+              <span className={companyFilter === c.key ? 'text-white' : 'text-gray-900'}>{formatINR(c.sales)}</span>
+              {c.pending > 0 && (
+                <span className={`font-bold ${companyFilter === c.key ? 'text-white' : 'text-destructive'}`}>
+                  ({formatINR(c.pending)} pending)
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {rows.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="No bookings this month yet" />
+        <EmptyState
+          icon={CalendarDays}
+          title={allBookings.length === 0 ? 'No bookings this month yet' : 'No bookings for this company this month'}
+        />
       ) : (
         <div className="overflow-x-auto border rounded-md">
           <table className="w-full text-sm">
