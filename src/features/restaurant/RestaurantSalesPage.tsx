@@ -129,16 +129,19 @@ export function RestaurantSalesPage() {
       const r = restaurantByDate.get(date);
       const split = mealPlanByDate.get(date) || { settled: 0, pending: 0 };
       const mealPlan = split.settled; // only the paid-via-room-bill portion counts as recognized revenue here
+      const mealPlanPending = split.pending; // shown separately, and folded into rPending below
+      const mealPlanTotal = split.settled + split.pending; // the full food share for the day, for context
+      const manualPending = r?.pendingAmount || 0;
       const rOnline = r?.onlineAmount || 0;
       const rCash = r?.cashAmount || 0;
       // Manually-entered pending PLUS the unpaid portion of any room stay's food share —
       // a bulk-imported (or any) guest still marked Pending hasn't paid for meals either.
-      const rPending = (r?.pendingAmount || 0) + split.pending;
+      const rPending = manualPending + mealPlanPending;
       const rDailyTotal = dailyTotal(rOnline, rCash, rPending, mealPlan);
 
       return {
         id: r?.id,
-        date, rOnline, rCash, rPending, mealPlan, rDailyTotal,
+        date, rOnline, rCash, rPending, manualPending, mealPlan, mealPlanPending, mealPlanTotal, rDailyTotal,
       };
     });
   }, [restaurantSales, bookings, month, roomsById, roomTypesById, paymentsByBooking]);
@@ -148,8 +151,9 @@ export function RestaurantSalesPage() {
     rCash: acc.rCash + r.rCash,
     rPending: acc.rPending + r.rPending,
     mealPlan: acc.mealPlan + r.mealPlan,
+    mealPlanPending: acc.mealPlanPending + r.mealPlanPending,
     rDailyTotal: acc.rDailyTotal + r.rDailyTotal,
-  }), { rOnline: 0, rCash: 0, rPending: 0, mealPlan: 0, rDailyTotal: 0 });
+  }), { rOnline: 0, rCash: 0, rPending: 0, mealPlan: 0, mealPlanPending: 0, rDailyTotal: 0 });
 
   // Pagination Logic
   const totalPages = Math.ceil(monthlyRows.length / itemsPerPage);
@@ -231,8 +235,22 @@ export function RestaurantSalesPage() {
                       </td>
                       <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.rOnline)}</td>
                       <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.rCash)}</td>
-                      <td className="p-4 text-right font-medium text-orange-600">{formatINR(r.rPending)}</td>
-                      <td className="p-4 text-right font-medium text-blue-600">{formatINR(r.mealPlan)}</td>
+                      <td className="p-4 text-right font-medium text-orange-600">
+                        <div>{formatINR(r.rPending)}</div>
+                        {r.manualPending > 0 && r.mealPlanPending > 0 && (
+                          <div className="text-[10px] font-normal text-orange-400 mt-0.5">
+                            {formatINR(r.manualPending)} entry + {formatINR(r.mealPlanPending)} meal plan
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4 text-right font-medium text-blue-600">
+                        <div>{formatINR(r.mealPlan)}</div>
+                        {r.mealPlanPending > 0 && (
+                          <div className="text-[10px] font-normal mt-0.5 text-gray-400">
+                            Food total {formatINR(r.mealPlanTotal)} — <span className="text-orange-500">{formatINR(r.mealPlanPending)} not yet paid, see Pending</span>
+                          </div>
+                        )}
+                      </td>
                       <td className="p-4 text-right font-bold text-gray-900 bg-gray-50/30">{formatINR(r.rDailyTotal)}</td>
                       <td className="p-4">
                         <div className="flex items-center justify-center gap-2">
