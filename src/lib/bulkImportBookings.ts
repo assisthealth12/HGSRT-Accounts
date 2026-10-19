@@ -141,8 +141,16 @@ export function validateRows(
     const errors: string[] = [];
 
     if (!row.guestName) errors.push('Guest Name is required');
-    if (!VALID_OCCUPANCY.includes(row.occupancy as Occupancy)) {
+
+    // Case-insensitive, same as Room Number/Payment Mode/Company below — but the
+    // stored value must be the exact canonical casing the rest of the app expects
+    // ('Single', not 'single'), so normalize it rather than just validating it.
+    let occupancy = row.occupancy;
+    const occupancyMatch = VALID_OCCUPANCY.find(o => o.toLowerCase() === row.occupancy.trim().toLowerCase());
+    if (!occupancyMatch) {
       errors.push(`Occupancy must be Single/Double/Triple (got "${row.occupancy}")`);
+    } else {
+      occupancy = occupancyMatch;
     }
 
     const roomMatches = roomsByNumber.get(row.roomNumber.trim().toLowerCase()) || [];
@@ -176,12 +184,19 @@ export function validateRows(
     if (row.addonAmount !== null && row.addonAmount < 0) errors.push('Addon Amount cannot be negative');
     if (row.discount !== null && row.discount < 0) errors.push('Discount cannot be negative');
 
-    if (row.mealPlan && !VALID_MEAL_PLAN.includes(row.mealPlan as MealPlan)) {
-      errors.push(`Meal Plan must be EP, CP, or MAP (got "${row.mealPlan}")`);
+    let mealPlan = row.mealPlan;
+    if (row.mealPlan) {
+      const mealPlanMatch = VALID_MEAL_PLAN.find(mp => mp.toLowerCase() === row.mealPlan.trim().toLowerCase());
+      if (!mealPlanMatch) {
+        errors.push(`Meal Plan must be EP, CP, or MAP (got "${row.mealPlan}")`);
+      } else {
+        mealPlan = mealPlanMatch;
+      }
     }
 
-    // Company is optional — an unrecognized name is flagged but doesn't block the row,
-    // since the booking is still valid without one.
+    // Company itself is optional (blank is fine), but an unrecognized name is treated
+    // as a mistake and blocks the row — silently dropping a mistyped company would
+    // hide that guest from per-company revenue/pending reporting without any warning.
     let companyId: string | null = null;
     if (row.companyName) {
       companyId = companiesByName.get(row.companyName.trim().toLowerCase()) || null;
@@ -207,6 +222,6 @@ export function validateRows(
       ? row.tariff + (row.gst || 0) + (row.addonAmount || 0) + (row.mealPlanAmount || 0) + (row.mealPlanGst || 0) - (row.discount || 0)
       : null;
 
-    return { ...row, errors, roomId, paymentModeId, companyId, nights, total };
+    return { ...row, occupancy, mealPlan, errors, roomId, paymentModeId, companyId, nights, total };
   });
 }
