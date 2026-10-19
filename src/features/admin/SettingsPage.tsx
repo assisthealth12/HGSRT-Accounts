@@ -184,6 +184,38 @@ const FOOD_SHARE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
   { key: 'tripleMAPFoodShare', label: 'Triple — MAP Food Share' },
 ];
 
+// One compact table per occupancy — Plan / Rate / Food Share side by side, instead of
+// 15 identically-styled fields in a flat grid with no visual grouping.
+const OCCUPANCY_RATE_TABLE: {
+  occupancy: string;
+  rows: { plan: string; rateKey: keyof OccupancyRates; shareKey?: keyof OccupancyRates }[];
+}[] = [
+  {
+    occupancy: 'Single',
+    rows: [
+      { plan: 'EP — Room Only', rateKey: 'singleEP' },
+      { plan: 'CP — + Breakfast', rateKey: 'singleCP', shareKey: 'singleCPFoodShare' },
+      { plan: 'MAP — + Breakfast + Dinner', rateKey: 'singleMAP', shareKey: 'singleMAPFoodShare' },
+    ],
+  },
+  {
+    occupancy: 'Double',
+    rows: [
+      { plan: 'EP — Room Only', rateKey: 'doubleEP' },
+      { plan: 'CP — + Breakfast', rateKey: 'doubleCP', shareKey: 'doubleCPFoodShare' },
+      { plan: 'MAP — + Breakfast + Dinner', rateKey: 'doubleMAP', shareKey: 'doubleMAPFoodShare' },
+    ],
+  },
+  {
+    occupancy: 'Triple',
+    rows: [
+      { plan: 'EP — Room Only', rateKey: 'tripleEP' },
+      { plan: 'CP — + Breakfast', rateKey: 'tripleCP', shareKey: 'tripleCPFoodShare' },
+      { plan: 'MAP — + Breakfast + Dinner', rateKey: 'tripleMAP', shareKey: 'tripleMAPFoodShare' },
+    ],
+  },
+];
+
 function RoomTypeFormDialog({
   roomType,
   open,
@@ -235,7 +267,7 @@ function RoomTypeFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{roomType ? 'Edit Room Type' : 'Add Room Type'}</DialogTitle>
         </DialogHeader>
@@ -244,46 +276,60 @@ function RoomTypeFormDialog({
             <Label>Name</Label>
             <Input placeholder="e.g. Executive" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div>
-            <Label className="block mb-2">Rates (₹ per night, optional)</Label>
-            <p className="text-xs text-muted-foreground mb-3">
-              Leave any rate blank/0 if this room type doesn't offer that option. Rooms of this type with no
-              rates set at all will keep using their individual Base Tariff instead.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {RATE_FIELDS.map(f => (
-                <div key={f.key}>
-                  <Label className="text-xs">{f.label}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={rates[f.key]}
-                    onChange={(e) => setRates(r => ({ ...r, [f.key]: e.target.value }))}
-                  />
-                </div>
-              ))}
+          <div className="space-y-4">
+            <div>
+              <Label className="block mb-1">Rates &amp; Food Share (₹ per night, optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Leave a Rate blank if this room type doesn't offer that plan — rooms with no rates set at all keep
+                using their individual Base Tariff. Food Share is the actual food cost credited to Restaurant Sales
+                each night; leave it blank to just use Rate-minus-EP automatically.
+              </p>
             </div>
-          </div>
-          <div>
-            <Label className="block mb-2">Food Share (₹ per night, optional)</Label>
-            <p className="text-xs text-muted-foreground mb-3">
-              How much of each CP/MAP rate is actual food cost — this is what gets credited to Restaurant Sales
-              each night of the stay, not the full CP/MAP rate (which may include room-side margin). Leave blank
-              to just use the CP/MAP-minus-EP difference automatically, as before.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {FOOD_SHARE_FIELDS.map(f => (
-                <div key={f.key}>
-                  <Label className="text-xs">{f.label}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={rates[f.key]}
-                    onChange={(e) => setRates(r => ({ ...r, [f.key]: e.target.value }))}
-                  />
+            {OCCUPANCY_RATE_TABLE.map(group => (
+              <div key={group.occupancy} className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 border-b border-gray-200">
+                  {group.occupancy}
                 </div>
-              ))}
-            </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground">
+                      <th className="text-left font-medium px-3 py-1.5 w-[45%]">Plan</th>
+                      <th className="text-left font-medium px-3 py-1.5">Rate</th>
+                      <th className="text-left font-medium px-3 py-1.5">Food Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.rows.map(row => (
+                      <tr key={row.rateKey} className="border-t border-gray-100">
+                        <td className="px-3 py-1.5 text-gray-600">{row.plan}</td>
+                        <td className="px-3 py-1.5">
+                          <Input
+                            type="number"
+                            min="0"
+                            className="h-9"
+                            value={rates[row.rateKey]}
+                            onChange={(e) => setRates(r => ({ ...r, [row.rateKey]: e.target.value }))}
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {row.shareKey ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              className="h-9"
+                              value={rates[row.shareKey]}
+                              onChange={(e) => setRates(r => ({ ...r, [row.shareKey as keyof OccupancyRates]: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="text-gray-300 text-xs px-3">— n/a —</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </div>
         </div>
         <DialogFooter className="mt-4">
