@@ -212,7 +212,10 @@ export function RestaurantSalesPage() {
                   {paginatedRows.map(r => (
                     <tr key={r.date} className="hover:bg-gray-50/50 transition-colors">
                       <td className="p-4 font-medium text-gray-900">
-                        {r.date}
+                        <div>{r.date}</div>
+                        {!r.id && (
+                          <div className="text-[10px] font-normal text-gray-400 mt-0.5">Not recorded yet — Meal Plan only</div>
+                        )}
                       </td>
                       <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.rOnline)}</td>
                       <td className="p-4 text-right font-medium text-gray-700">{formatINR(r.rCash)}</td>
@@ -221,13 +224,14 @@ export function RestaurantSalesPage() {
                       <td className="p-4 text-right font-bold text-gray-900 bg-gray-50/30">{formatINR(r.rDailyTotal)}</td>
                       <td className="p-4">
                         <div className="flex items-center justify-center gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-blue-600 hover:bg-blue-50" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-600 hover:bg-blue-50"
                             onClick={() => handleOpenEditDialog(r.date)}
+                            title={r.id ? 'Edit Entry' : 'Add Online/Cash/Pending for this date'}
                           >
-                            <Edit className="w-4 h-4" />
+                            {r.id ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                           </Button>
                           {r.id && (
                             <Button 
