@@ -20,6 +20,10 @@ export function totalCollected(onlineAmount: Money, cashAmount: Money): Money {
   return onlineAmount + cashAmount;
 }
 
-export function dailyTotal(onlineAmount: Money, cashAmount: Money, mealPlanAllocation: Money): Money {
-  return onlineAmount + cashAmount + mealPlanAllocation;
+// The full day's restaurant business, whether collected yet or not — previously this
+// left out pendingAmount entirely, which understated the day's revenue whenever a
+// bill was still outstanding (and made this number disagree with Total Booked, which
+// did include it).
+export function dailyTotal(onlineAmount: Money, cashAmount: Money, pendingAmount: Money, mealPlanAllocation: Money): Money {
+  return onlineAmount + cashAmount + pendingAmount + mealPlanAllocation;
 }

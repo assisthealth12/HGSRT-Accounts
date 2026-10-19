@@ -10,9 +10,7 @@ import { useRestaurantDailySales, useUpsertRestaurantDailySale, useDeleteRestaur
 import { useBookingsInRange } from '@/hooks/useBookings';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
-import { foodShareFor } from '@/domain/room';
-import { Booking } from '@/domain/booking';
-import { Room, RoomType } from '@/domain/room';
+import { foodShareOnDate, foodShareByDate, lookbackStart } from '@/domain/foodShare';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatCard } from '@/components/shared/StatCard';
@@ -33,54 +31,11 @@ function toPaise(value: string) {
   return isNaN(n) ? 0 : Math.round(n * 100);
 }
 
-// How far back a booking's check-in can be and still possibly have a night that
-// falls within the month/date being viewed — hotel stays are essentially never
-// longer than this, so it bounds the query without needing the full history.
-const STAY_LOOKBACK_DAYS = 120;
-
-// What a booking contributes to Restaurant Sales per night of its stay — the
-// room type's configured Food Share (falling back to the CP/MAP-minus-EP delta if
-// no Food Share is set), summed across every room on the booking, plus that
-// night's share of whatever GST was entered on the Meal Plan Allocation.
-function nightlyFoodShare(
-  booking: Booking,
-  roomsById: Map<string, Room>,
-  roomTypesById: Map<string, RoomType>
-): number {
-  const mealPlan = booking.mealPlan;
-  if (!mealPlan || mealPlan === 'EP' || !booking.nights) return 0;
-  const foodCost = (booking.roomIds || []).reduce((sum, roomId) => {
-    const room = roomsById.get(roomId);
-    const roomType = room ? roomTypesById.get(room.roomTypeId) : undefined;
-    return sum + foodShareFor(roomType, booking.occupancy, mealPlan);
-  }, 0);
-  const gstShare = (booking.mealPlanGst || 0) / booking.nights;
-  return foodCost + gstShare;
-}
-
-// Sums every booking's nightly share for one specific date (a booking counts for a
-// date if that date falls anywhere in [checkIn, checkOut) — the same in/out
-// convention used for occupancy everywhere else in the app).
-function foodShareOnDate(
-  bookings: Booking[],
-  date: string,
-  roomsById: Map<string, Room>,
-  roomTypesById: Map<string, RoomType>
-): number {
-  return bookings
-    .filter(b => b.checkIn <= date && date < b.checkOut)
-    .reduce((acc, b) => acc + nightlyFoodShare(b, roomsById, roomTypesById), 0);
-}
-
 export function RestaurantSalesPage() {
   const [month, setMonth] = useState(todayISO().slice(0, 7));
 
   const { data: restaurantSales = [] } = useRestaurantDailySales();
-  const monthLookbackStart = useMemo(() => {
-    const d = new Date(`${month}-01`);
-    d.setDate(d.getDate() - STAY_LOOKBACK_DAYS);
-    return d.toISOString().slice(0, 10);
-  }, [month]);
+  const monthLookbackStart = useMemo(() => lookbackStart(`${month}-01`), [month]);
   const { data: bookings = [] } = useBookingsInRange(monthLookbackStart, `${month}-31`);
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
@@ -133,7 +88,7 @@ export function RestaurantSalesPage() {
 
   const booked = totalBooked(onlineAmount, cashAmount, pendingAmount);
   const collected = totalCollected(onlineAmount, cashAmount);
-  const restaurantDayTotal = dailyTotal(onlineAmount, cashAmount, mealPlanAllocation);
+  const restaurantDayTotal = dailyTotal(onlineAmount, cashAmount, pendingAmount, mealPlanAllocation);
 
   const handleSave = async () => {
     await upsertRestaurantSale({
@@ -154,20 +109,7 @@ export function RestaurantSalesPage() {
     // Spread each CP/MAP booking's nightly food share across every date of its stay
     // that falls within the month, not just its check-in date — a stay that started
     // in a prior month (within the lookback window) still contributes its nights here.
-    const mealPlanByDate = new Map<string, number>();
-    bookings.forEach(b => {
-      const nightly = nightlyFoodShare(b, roomsById, roomTypesById);
-      if (nightly <= 0) return;
-      const cursor = new Date(b.checkIn);
-      const end = new Date(b.checkOut);
-      while (cursor < end) {
-        const dateStr = cursor.toISOString().slice(0, 10);
-        if (dateStr.startsWith(month)) {
-          mealPlanByDate.set(dateStr, (mealPlanByDate.get(dateStr) || 0) + nightly);
-        }
-        cursor.setDate(cursor.getDate() + 1);
-      }
-    });
+    const mealPlanByDate = foodShareByDate(bookings, roomsById, roomTypesById, (d) => d.startsWith(month));
 
     const dates = new Set([
       ...restaurantSales.filter(s => s.saleDate.startsWith(month)).map(s => s.saleDate),
@@ -180,7 +122,7 @@ export function RestaurantSalesPage() {
       const rOnline = r?.onlineAmount || 0;
       const rCash = r?.cashAmount || 0;
       const rPending = r?.pendingAmount || 0;
-      const rDailyTotal = dailyTotal(rOnline, rCash, mealPlan);
+      const rDailyTotal = dailyTotal(rOnline, rCash, rPending, mealPlan);
 
       return {
         id: r?.id,
@@ -416,14 +358,33 @@ export function RestaurantSalesPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11">
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={isSavingRestaurant} className="rounded-xl h-11 bg-emerald-600 hover:bg-emerald-700 text-white px-6">
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                {isSavingRestaurant ? 'Saving...' : 'Save Entry'}
-              </Button>
+            <div className="flex items-center justify-between gap-3 pt-4 border-t">
+              {existingRestaurant ? (
+                <Button
+                  variant="ghost"
+                  className="rounded-xl h-11 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  onClick={async () => {
+                    const ok = await confirmAction({ title: 'Delete Entry', description: `Delete entry for ${saleDate}?`, variant: 'destructive' });
+                    if (ok && existingRestaurant.id) {
+                      await deleteRestaurantSale(existingRestaurant.id);
+                      toast({ title: 'Deleted' });
+                      setIsDialogOpen(false);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Entry
+                </Button>
+              ) : <span />}
+              <div className="flex items-center gap-3">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11">
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={isSavingRestaurant} className="rounded-xl h-11 bg-emerald-600 hover:bg-emerald-700 text-white px-6">
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  {isSavingRestaurant ? 'Saving...' : 'Save Entry'}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

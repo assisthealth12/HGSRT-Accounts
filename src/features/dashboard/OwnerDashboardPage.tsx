@@ -9,6 +9,9 @@ import { balanceOwed } from '@/domain/payrollPayment';
 import { useBookingsInRange } from '@/hooks/useBookings';
 import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRestaurantDailySales } from '@/hooks/useRestaurantDailySales';
+import { useRooms } from '@/hooks/useRooms';
+import { useRoomTypes } from '@/hooks/useRoomTypes';
+import { foodShareInRange, foodShareOnDate, lookbackStart } from '@/domain/foodShare';
 import { useBanquetSales } from '@/hooks/useBanquetSales';
 import { useBanquetBookings } from '@/hooks/useBanquetBookings';
 import { banquetPending } from '@/domain/banquetBooking';
@@ -49,7 +52,12 @@ export function OwnerDashboardPage() {
   const [from, setFrom] = useState(firstOfMonthISO());
   const [to, setTo] = useState(todayISO());
 
-  const { data: bookings = [] } = useBookingsInRange(from, to);
+  // Widened so a stay that started before `from` but is still running (within the
+  // lookback window) still has its in-range nights counted for the restaurant food
+  // share below — bookingsInRange (checkIn-scoped, for room revenue) re-filters this
+  // same set, so widening it here doesn't change that calculation.
+  const bookingsQueryStart = useMemo(() => lookbackStart(from), [from]);
+  const { data: bookings = [] } = useBookingsInRange(bookingsQueryStart, to);
   const { data: payments = [] } = usePaymentsInRange(from, to);
   const { data: restaurantSales = [] } = useRestaurantDailySales();
   const { data: banquetSales = [] } = useBanquetSales();
@@ -57,6 +65,11 @@ export function OwnerDashboardPage() {
   const { data: expenses = [] } = useExpenses();
   const { staff } = useStaff();
   const { data: payrollPayments = [] } = usePayrollPayments();
+  const { data: rooms = [] } = useRooms();
+  const { data: roomTypes = [] } = useRoomTypes();
+
+  const roomsById = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms]);
+  const roomTypesById = useMemo(() => new Map(roomTypes.map(t => [t.id, t])), [roomTypes]);
 
   const bookingsInRange = useMemo(() => bookings.filter(b => inRange(b.checkIn, from, to)), [bookings, from, to]);
   const paymentsByBooking = useMemo(() => {
@@ -73,7 +86,10 @@ export function OwnerDashboardPage() {
   const roomPending = bookingsInRange.reduce((acc, b) => acc + bookingPending(b, paymentsByBooking.get(b.id) || []), 0);
 
   const restaurantInRange = restaurantSales.filter(s => inRange(s.saleDate, from, to));
-  const restaurantSalesTotal = restaurantInRange.reduce((acc, s) => acc + restaurantBooked(s.onlineAmount, s.cashAmount, s.pendingAmount), 0);
+  // Must match Restaurant Sales' own Total Revenue figure exactly — same shared
+  // foodShareInRange call, same room-type Food Share config, same date-range rules.
+  const restaurantFoodShare = foodShareInRange(bookings, from, to, roomsById, roomTypesById);
+  const restaurantSalesTotal = restaurantInRange.reduce((acc, s) => acc + restaurantBooked(s.onlineAmount, s.cashAmount, s.pendingAmount), 0) + restaurantFoodShare;
   const restaurantCollectedTotal = restaurantInRange.reduce((acc, s) => acc + restaurantCollected(s.onlineAmount, s.cashAmount), 0);
   const restaurantPending = restaurantInRange.reduce((acc, s) => acc + s.pendingAmount, 0);
 
@@ -113,7 +129,8 @@ export function OwnerDashboardPage() {
     return dates.map(date => {
       const dayRoom = bookings.filter(b => b.checkIn === date).reduce((acc, b) => acc + bookingTotal(b), 0);
       const sale = restaurantSales.find(s => s.saleDate === date);
-      const dayRestaurant = sale ? restaurantBooked(sale.onlineAmount, sale.cashAmount, sale.pendingAmount) : 0;
+      const dayRestaurant = (sale ? restaurantBooked(sale.onlineAmount, sale.cashAmount, sale.pendingAmount) : 0)
+        + foodShareOnDate(bookings, date, roomsById, roomTypesById);
       const dayBanquetSales = banquetSales.find(s => s.saleDate === date);
       const dayBanquetEvents = banquetBookings.filter(b => b.eventDate === date).reduce((acc, b) => acc + b.quotedAmount, 0);
       const dayBanquet = (dayBanquetSales ? dayBanquetSales.onlineAmount + dayBanquetSales.cashAmount : 0) + dayBanquetEvents;
@@ -127,7 +144,7 @@ export function OwnerDashboardPage() {
         Revenue: totalRev / 100 
       };
     });
-  }, [bookings, restaurantSales, banquetSales, from, to]);
+  }, [bookings, restaurantSales, banquetSales, from, to, roomsById, roomTypesById]);
 
   return (
     <div className="space-y-6">
