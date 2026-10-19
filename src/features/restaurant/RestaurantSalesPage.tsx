@@ -8,6 +8,11 @@ import { formatINR } from '@/domain/money';
 import { totalBooked, totalCollected, dailyTotal } from '@/domain/restaurantDailySales';
 import { useRestaurantDailySales, useUpsertRestaurantDailySale, useDeleteRestaurantDailySale } from '@/hooks/useRestaurantDailySales';
 import { useBookingsInRange } from '@/hooks/useBookings';
+import { useRooms } from '@/hooks/useRooms';
+import { useRoomTypes } from '@/hooks/useRoomTypes';
+import { foodShareFor } from '@/domain/room';
+import { Booking } from '@/domain/booking';
+import { Room, RoomType } from '@/domain/room';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatCard } from '@/components/shared/StatCard';
@@ -28,13 +33,62 @@ function toPaise(value: string) {
   return isNaN(n) ? 0 : Math.round(n * 100);
 }
 
+// How far back a booking's check-in can be and still possibly have a night that
+// falls within the month/date being viewed — hotel stays are essentially never
+// longer than this, so it bounds the query without needing the full history.
+const STAY_LOOKBACK_DAYS = 120;
+
+// What a booking contributes to Restaurant Sales per night of its stay — the
+// room type's configured Food Share (falling back to the CP/MAP-minus-EP delta if
+// no Food Share is set), summed across every room on the booking, plus that
+// night's share of whatever GST was entered on the Meal Plan Allocation.
+function nightlyFoodShare(
+  booking: Booking,
+  roomsById: Map<string, Room>,
+  roomTypesById: Map<string, RoomType>
+): number {
+  const mealPlan = booking.mealPlan;
+  if (!mealPlan || mealPlan === 'EP' || !booking.nights) return 0;
+  const foodCost = (booking.roomIds || []).reduce((sum, roomId) => {
+    const room = roomsById.get(roomId);
+    const roomType = room ? roomTypesById.get(room.roomTypeId) : undefined;
+    return sum + foodShareFor(roomType, booking.occupancy, mealPlan);
+  }, 0);
+  const gstShare = (booking.mealPlanGst || 0) / booking.nights;
+  return foodCost + gstShare;
+}
+
+// Sums every booking's nightly share for one specific date (a booking counts for a
+// date if that date falls anywhere in [checkIn, checkOut) — the same in/out
+// convention used for occupancy everywhere else in the app).
+function foodShareOnDate(
+  bookings: Booking[],
+  date: string,
+  roomsById: Map<string, Room>,
+  roomTypesById: Map<string, RoomType>
+): number {
+  return bookings
+    .filter(b => b.checkIn <= date && date < b.checkOut)
+    .reduce((acc, b) => acc + nightlyFoodShare(b, roomsById, roomTypesById), 0);
+}
+
 export function RestaurantSalesPage() {
   const [month, setMonth] = useState(todayISO().slice(0, 7));
 
   const { data: restaurantSales = [] } = useRestaurantDailySales();
-  const { data: bookings = [] } = useBookingsInRange(`${month}-01`, `${month}-31`);
+  const monthLookbackStart = useMemo(() => {
+    const d = new Date(`${month}-01`);
+    d.setDate(d.getDate() - STAY_LOOKBACK_DAYS);
+    return d.toISOString().slice(0, 10);
+  }, [month]);
+  const { data: bookings = [] } = useBookingsInRange(monthLookbackStart, `${month}-31`);
+  const { data: rooms = [] } = useRooms();
+  const { data: roomTypes = [] } = useRoomTypes();
   const { mutateAsync: upsertRestaurantSale, isPending: isSavingRestaurant } = useUpsertRestaurantDailySale();
   const { mutateAsync: deleteRestaurantSale } = useDeleteRestaurantDailySale();
+
+  const roomsById = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms]);
+  const roomTypesById = useMemo(() => new Map(roomTypes.map(t => [t.id, t])), [roomTypes]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -73,10 +127,8 @@ export function RestaurantSalesPage() {
   const pendingAmount = toPaise(pending);
 
   const mealPlanAllocation = useMemo(
-    () => bookings
-      .filter(b => b.checkIn === saleDate)
-      .reduce((acc, b) => acc + (b.mealPlanAmount || 0) + (b.mealPlanGst || 0), 0),
-    [bookings, saleDate]
+    () => foodShareOnDate(bookings, saleDate, roomsById, roomTypesById),
+    [bookings, saleDate, roomsById, roomTypesById]
   );
 
   const booked = totalBooked(onlineAmount, cashAmount, pendingAmount);
@@ -99,13 +151,27 @@ export function RestaurantSalesPage() {
   // Monthly View Calculations
   const monthlyRows = useMemo(() => {
     const restaurantByDate = new Map(restaurantSales.map(s => [s.saleDate, s]));
+    // Spread each CP/MAP booking's nightly food share across every date of its stay
+    // that falls within the month, not just its check-in date — a stay that started
+    // in a prior month (within the lookback window) still contributes its nights here.
     const mealPlanByDate = new Map<string, number>();
     bookings.forEach(b => {
-      mealPlanByDate.set(b.checkIn, (mealPlanByDate.get(b.checkIn) || 0) + (b.mealPlanAmount || 0) + (b.mealPlanGst || 0));
+      const nightly = nightlyFoodShare(b, roomsById, roomTypesById);
+      if (nightly <= 0) return;
+      const cursor = new Date(b.checkIn);
+      const end = new Date(b.checkOut);
+      while (cursor < end) {
+        const dateStr = cursor.toISOString().slice(0, 10);
+        if (dateStr.startsWith(month)) {
+          mealPlanByDate.set(dateStr, (mealPlanByDate.get(dateStr) || 0) + nightly);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
     });
 
     const dates = new Set([
       ...restaurantSales.filter(s => s.saleDate.startsWith(month)).map(s => s.saleDate),
+      ...mealPlanByDate.keys(),
     ]);
 
     return Array.from(dates).sort((a, b) => b.localeCompare(a)).map(date => { // Sort descending
@@ -121,7 +187,7 @@ export function RestaurantSalesPage() {
         date, rOnline, rCash, rPending, mealPlan, rDailyTotal,
       };
     });
-  }, [restaurantSales, bookings, month]);
+  }, [restaurantSales, bookings, month, roomsById, roomTypesById]);
 
   const totals = monthlyRows.reduce((acc, r) => ({
     rOnline: acc.rOnline + r.rOnline,

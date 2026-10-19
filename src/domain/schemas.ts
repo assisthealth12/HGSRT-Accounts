@@ -14,6 +14,12 @@ export const occupancyRatesSchema = z.object({
   tripleEP: moneySchema,
   tripleCP: moneySchema,
   tripleMAP: moneySchema,
+  singleCPFoodShare: moneySchema.optional(),
+  singleMAPFoodShare: moneySchema.optional(),
+  doubleCPFoodShare: moneySchema.optional(),
+  doubleMAPFoodShare: moneySchema.optional(),
+  tripleCPFoodShare: moneySchema.optional(),
+  tripleMAPFoodShare: moneySchema.optional(),
 });
 
 export const roomTypeSchema = z.object({

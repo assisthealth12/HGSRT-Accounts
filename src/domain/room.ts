@@ -14,6 +14,16 @@ export interface OccupancyRates {
   tripleEP: Money;
   tripleCP: Money;
   tripleMAP: Money;
+  // Manually-set nightly food cost, per occupancy — what actually gets credited to
+  // Restaurant Sales. Distinct from the CP/MAP rate itself, which is what the guest is
+  // billed (room package price) and may include margin beyond raw food cost. Optional:
+  // falls back to the CP/MAP-minus-EP delta when not set, same as before this existed.
+  singleCPFoodShare?: Money;
+  singleMAPFoodShare?: Money;
+  doubleCPFoodShare?: Money;
+  doubleMAPFoodShare?: Money;
+  tripleCPFoodShare?: Money;
+  tripleMAPFoodShare?: Money;
 }
 
 export interface RoomType extends BaseDocument {
@@ -59,4 +69,20 @@ export function mealPlanDeltaFor(
   const ep = roomType.rates[epKey];
   if (typeof plan !== 'number' || typeof ep !== 'number') return 0;
   return Math.max(0, plan - ep);
+}
+
+// What actually goes to the restaurant's books per night, per room — the manually-set
+// Food Share if configured, otherwise the same CP/MAP-minus-EP delta used to bill the
+// guest (so a room type with no Food Share set behaves exactly as it did before this
+// existed).
+export function foodShareFor(
+  roomType: Pick<RoomType, 'rates'> | undefined,
+  occupancy: RoomOccupancy,
+  mealPlan: MealPlan = 'CP'
+): Money {
+  if (!roomType?.rates || mealPlan === 'EP') return 0;
+  const shareKey = `${occupancy.toLowerCase()}${mealPlan}FoodShare` as keyof OccupancyRates;
+  const share = roomType.rates[shareKey];
+  if (typeof share === 'number') return share;
+  return mealPlanDeltaFor(roomType, occupancy, mealPlan);
 }

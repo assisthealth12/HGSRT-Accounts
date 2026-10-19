@@ -156,6 +156,9 @@ const EMPTY_RATES: OccupancyRates = {
   singleEP: 0, singleCP: 0, singleMAP: 0,
   doubleEP: 0, doubleCP: 0, doubleMAP: 0,
   tripleEP: 0, tripleCP: 0, tripleMAP: 0,
+  singleCPFoodShare: 0, singleMAPFoodShare: 0,
+  doubleCPFoodShare: 0, doubleMAPFoodShare: 0,
+  tripleCPFoodShare: 0, tripleMAPFoodShare: 0,
 };
 
 const RATE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
@@ -168,6 +171,17 @@ const RATE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
   { key: 'tripleEP', label: 'Triple — Room Only (EP)' },
   { key: 'tripleCP', label: 'Triple — Room + Breakfast (CP)' },
   { key: 'tripleMAP', label: 'Triple — Room + Breakfast + Dinner (MAP)' },
+];
+
+// The portion of each CP/MAP rate that's actually food cost — credited to Restaurant
+// Sales instead of the full rate delta, which may include room-department margin.
+const FOOD_SHARE_FIELDS: { key: keyof OccupancyRates; label: string }[] = [
+  { key: 'singleCPFoodShare', label: 'Single — CP Food Share' },
+  { key: 'singleMAPFoodShare', label: 'Single — MAP Food Share' },
+  { key: 'doubleCPFoodShare', label: 'Double — CP Food Share' },
+  { key: 'doubleMAPFoodShare', label: 'Double — MAP Food Share' },
+  { key: 'tripleCPFoodShare', label: 'Triple — CP Food Share' },
+  { key: 'tripleMAPFoodShare', label: 'Triple — MAP Food Share' },
 ];
 
 function RoomTypeFormDialog({
@@ -184,28 +198,20 @@ function RoomTypeFormDialog({
   const { mutateAsync: createRoomType, isPending: isCreating } = useCreateRoomType();
   const { mutateAsync: updateRoomType, isPending: isUpdating } = useUpdateRoomType();
 
+  const ALL_FIELDS = [...RATE_FIELDS, ...FOOD_SHARE_FIELDS];
+
   const [name, setName] = useState('');
-  const [rates, setRates] = useState<Record<keyof OccupancyRates, string>>({
-    singleEP: '', singleCP: '', singleMAP: '',
-    doubleEP: '', doubleCP: '', doubleMAP: '',
-    tripleEP: '', tripleCP: '', tripleMAP: '',
-  });
+  const [rates, setRates] = useState<Record<keyof OccupancyRates, string>>(
+    Object.fromEntries(ALL_FIELDS.map(f => [f.key, ''])) as Record<keyof OccupancyRates, string>
+  );
 
   React.useEffect(() => {
     if (open) {
       setName(roomType?.name ?? '');
       const r = roomType?.rates ?? EMPTY_RATES;
-      setRates({
-        singleEP: r.singleEP ? String(r.singleEP / 100) : '',
-        singleCP: r.singleCP ? String(r.singleCP / 100) : '',
-        singleMAP: r.singleMAP ? String(r.singleMAP / 100) : '',
-        doubleEP: r.doubleEP ? String(r.doubleEP / 100) : '',
-        doubleCP: r.doubleCP ? String(r.doubleCP / 100) : '',
-        doubleMAP: r.doubleMAP ? String(r.doubleMAP / 100) : '',
-        tripleEP: r.tripleEP ? String(r.tripleEP / 100) : '',
-        tripleCP: r.tripleCP ? String(r.tripleCP / 100) : '',
-        tripleMAP: r.tripleMAP ? String(r.tripleMAP / 100) : '',
-      });
+      setRates(Object.fromEntries(
+        ALL_FIELDS.map(f => [f.key, r[f.key] ? String((r[f.key] as number) / 100) : ''])
+      ) as Record<keyof OccupancyRates, string>);
     }
   }, [open, roomType]);
 
@@ -213,17 +219,9 @@ function RoomTypeFormDialog({
 
   const handleSave = async () => {
     if (!name.trim()) return;
-    const ratesPayload: OccupancyRates = {
-      singleEP: Math.round(parseFloat(rates.singleEP || '0') * 100),
-      singleCP: Math.round(parseFloat(rates.singleCP || '0') * 100),
-      singleMAP: Math.round(parseFloat(rates.singleMAP || '0') * 100),
-      doubleEP: Math.round(parseFloat(rates.doubleEP || '0') * 100),
-      doubleCP: Math.round(parseFloat(rates.doubleCP || '0') * 100),
-      doubleMAP: Math.round(parseFloat(rates.doubleMAP || '0') * 100),
-      tripleEP: Math.round(parseFloat(rates.tripleEP || '0') * 100),
-      tripleCP: Math.round(parseFloat(rates.tripleCP || '0') * 100),
-      tripleMAP: Math.round(parseFloat(rates.tripleMAP || '0') * 100),
-    };
+    const ratesPayload = Object.fromEntries(
+      ALL_FIELDS.map(f => [f.key, Math.round(parseFloat(rates[f.key] || '0') * 100)])
+    ) as unknown as OccupancyRates;
 
     if (roomType) {
       await updateRoomType({ id: roomType.id, data: { name: name.trim(), rates: ratesPayload }, previous: roomType });
@@ -254,6 +252,27 @@ function RoomTypeFormDialog({
             </p>
             <div className="grid grid-cols-2 gap-3">
               {RATE_FIELDS.map(f => (
+                <div key={f.key}>
+                  <Label className="text-xs">{f.label}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={rates[f.key]}
+                    onChange={(e) => setRates(r => ({ ...r, [f.key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="block mb-2">Food Share (₹ per night, optional)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              How much of each CP/MAP rate is actual food cost — this is what gets credited to Restaurant Sales
+              each night of the stay, not the full CP/MAP rate (which may include room-side margin). Leave blank
+              to just use the CP/MAP-minus-EP difference automatically, as before.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {FOOD_SHARE_FIELDS.map(f => (
                 <div key={f.key}>
                   <Label className="text-xs">{f.label}</Label>
                   <Input
