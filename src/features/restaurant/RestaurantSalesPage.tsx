@@ -8,6 +8,7 @@ import { formatINR } from '@/domain/money';
 import { totalBooked, totalCollected, dailyTotal } from '@/domain/restaurantDailySales';
 import { useRestaurantDailySales, useUpsertRestaurantDailySale, useDeleteRestaurantDailySale } from '@/hooks/useRestaurantDailySales';
 import { useBookingsInRange } from '@/hooks/useBookings';
+import { usePaymentsInRange } from '@/hooks/usePayments';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomTypes } from '@/hooks/useRoomTypes';
 import { foodShareOnDate, foodShareByDate, lookbackStart } from '@/domain/foodShare';
@@ -37,6 +38,9 @@ export function RestaurantSalesPage() {
   const { data: restaurantSales = [] } = useRestaurantDailySales();
   const monthLookbackStart = useMemo(() => lookbackStart(`${month}-01`), [month]);
   const { data: bookings = [] } = useBookingsInRange(monthLookbackStart, `${month}-31`);
+  // Scoped the same wide range as bookings, not just the viewed month — a booking's
+  // payment is usually made at/near check-in, which can fall before the month starts.
+  const { data: payments = [] } = usePaymentsInRange(monthLookbackStart, `${month}-31`);
   const { data: rooms = [] } = useRooms();
   const { data: roomTypes = [] } = useRoomTypes();
   const { mutateAsync: upsertRestaurantSale, isPending: isSavingRestaurant } = useUpsertRestaurantDailySale();
@@ -44,6 +48,11 @@ export function RestaurantSalesPage() {
 
   const roomsById = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms]);
   const roomTypesById = useMemo(() => new Map(roomTypes.map(t => [t.id, t])), [roomTypes]);
+  const paymentsByBooking = useMemo(() => {
+    const map = new Map<string, typeof payments>();
+    payments.forEach(p => map.set(p.bookingId, [...(map.get(p.bookingId) || []), p]));
+    return map;
+  }, [payments]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -81,14 +90,14 @@ export function RestaurantSalesPage() {
   const cashAmount = toPaise(cash);
   const pendingAmount = toPaise(pending);
 
-  const mealPlanAllocation = useMemo(
-    () => foodShareOnDate(bookings, saleDate, roomsById, roomTypesById),
-    [bookings, saleDate, roomsById, roomTypesById]
+  const mealPlanSplit = useMemo(
+    () => foodShareOnDate(bookings, saleDate, roomsById, roomTypesById, paymentsByBooking),
+    [bookings, saleDate, roomsById, roomTypesById, paymentsByBooking]
   );
 
   const booked = totalBooked(onlineAmount, cashAmount, pendingAmount);
   const collected = totalCollected(onlineAmount, cashAmount);
-  const restaurantDayTotal = dailyTotal(onlineAmount, cashAmount, pendingAmount, mealPlanAllocation);
+  const restaurantDayTotal = dailyTotal(onlineAmount, cashAmount, pendingAmount + mealPlanSplit.pending, mealPlanSplit.settled);
 
   const handleSave = async () => {
     await upsertRestaurantSale({
@@ -109,7 +118,7 @@ export function RestaurantSalesPage() {
     // Spread each CP/MAP booking's nightly food share across every date of its stay
     // that falls within the month, not just its check-in date — a stay that started
     // in a prior month (within the lookback window) still contributes its nights here.
-    const mealPlanByDate = foodShareByDate(bookings, roomsById, roomTypesById, (d) => d.startsWith(month));
+    const mealPlanByDate = foodShareByDate(bookings, roomsById, roomTypesById, paymentsByBooking, (d) => d.startsWith(month));
 
     const dates = new Set([
       ...restaurantSales.filter(s => s.saleDate.startsWith(month)).map(s => s.saleDate),
@@ -118,10 +127,13 @@ export function RestaurantSalesPage() {
 
     return Array.from(dates).sort((a, b) => b.localeCompare(a)).map(date => { // Sort descending
       const r = restaurantByDate.get(date);
-      const mealPlan = mealPlanByDate.get(date) || 0;
+      const split = mealPlanByDate.get(date) || { settled: 0, pending: 0 };
+      const mealPlan = split.settled; // only the paid-via-room-bill portion counts as recognized revenue here
       const rOnline = r?.onlineAmount || 0;
       const rCash = r?.cashAmount || 0;
-      const rPending = r?.pendingAmount || 0;
+      // Manually-entered pending PLUS the unpaid portion of any room stay's food share —
+      // a bulk-imported (or any) guest still marked Pending hasn't paid for meals either.
+      const rPending = (r?.pendingAmount || 0) + split.pending;
       const rDailyTotal = dailyTotal(rOnline, rCash, rPending, mealPlan);
 
       return {
@@ -129,7 +141,7 @@ export function RestaurantSalesPage() {
         date, rOnline, rCash, rPending, mealPlan, rDailyTotal,
       };
     });
-  }, [restaurantSales, bookings, month, roomsById, roomTypesById]);
+  }, [restaurantSales, bookings, month, roomsById, roomTypesById, paymentsByBooking]);
 
   const totals = monthlyRows.reduce((acc, r) => ({
     rOnline: acc.rOnline + r.rOnline,
@@ -202,8 +214,8 @@ export function RestaurantSalesPage() {
                     <th className="p-4 font-semibold text-gray-600 w-[150px]">Date</th>
                     <th className="p-4 font-semibold text-gray-600 text-right">Online</th>
                     <th className="p-4 font-semibold text-gray-600 text-right">Cash</th>
-                    <th className="p-4 font-semibold text-orange-600 text-right">Pending</th>
-                    <th className="p-4 font-semibold text-blue-600 text-right">Meal Plan</th>
+                    <th className="p-4 font-semibold text-orange-600 text-right" title="Includes food share from any stay still marked Pending">Pending</th>
+                    <th className="p-4 font-semibold text-blue-600 text-right" title="Only the portion from fully-paid stays">Meal Plan</th>
                     <th className="p-4 font-bold text-gray-900 text-right">Daily Total</th>
                     <th className="p-4 font-semibold text-gray-600 text-center w-[120px]">Actions</th>
                   </tr>
@@ -339,12 +351,23 @@ export function RestaurantSalesPage() {
               </div>
             )}
 
-            <div className="p-3 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Coffee className="w-4 h-4 text-blue-600" />
-                <div className="text-sm font-semibold text-blue-900">Meal Plan Allocation</div>
+            <div className="p-3 rounded-lg bg-blue-50/50 border border-blue-100 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Coffee className="w-4 h-4 text-blue-600" />
+                  <div className="text-sm font-semibold text-blue-900">Meal Plan Allocation (room bill paid)</div>
+                </div>
+                <div className="text-lg font-bold text-blue-700">{formatINR(mealPlanSplit.settled)}</div>
               </div>
-              <div className="text-lg font-bold text-blue-700">{formatINR(mealPlanAllocation)}</div>
+              {mealPlanSplit.pending > 0 && (
+                <div className="flex items-center justify-between gap-2 text-orange-700">
+                  <div className="flex items-center gap-2 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>From stays still Pending (counted in Pending, not here)</span>
+                  </div>
+                  <div className="text-sm font-bold">{formatINR(mealPlanSplit.pending)}</div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100 text-center">
