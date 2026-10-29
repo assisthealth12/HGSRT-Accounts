@@ -59,10 +59,6 @@ export function OwnerDashboardPage() {
   const bookingsQueryStart = useMemo(() => lookbackStart(from), [from]);
   const { data: bookings = [] } = useBookingsInRange(bookingsQueryStart, to);
   const { data: payments = [] } = usePaymentsInRange(from, to);
-  // Separate, wider fetch just for "is this booking's room bill fully paid" checks —
-  // a booking from the lookback window may have been paid before `from`, which the
-  // narrower `payments` above wouldn't see.
-  const { data: paymentsForPendingCheck = [] } = usePaymentsInRange(bookingsQueryStart, to);
   const { data: restaurantSales = [] } = useRestaurantDailySales();
   const { data: banquetSales = [] } = useBanquetSales();
   const { data: banquetBookings = [] } = useBanquetBookings();
@@ -81,11 +77,6 @@ export function OwnerDashboardPage() {
     payments.forEach(p => map.set(p.bookingId, [...(map.get(p.bookingId) || []), p]));
     return map;
   }, [payments]);
-  const paymentsByBookingForPendingCheck = useMemo(() => {
-    const map = new Map<string, typeof paymentsForPendingCheck>();
-    paymentsForPendingCheck.forEach(p => map.set(p.bookingId, [...(map.get(p.bookingId) || []), p]));
-    return map;
-  }, [paymentsForPendingCheck]);
 
   const roomRevenue = bookingsInRange.reduce((acc, b) => acc + bookingTotal(b), 0);
   const roomCollected = bookingsInRange.reduce((acc, b) => {
@@ -96,16 +87,11 @@ export function OwnerDashboardPage() {
 
   const restaurantInRange = restaurantSales.filter(s => inRange(s.saleDate, from, to));
   // Must match Restaurant Sales' own Total Revenue figure exactly — same shared
-  // foodShareInRange call, same room-type Food Share config, same date-range rules,
-  // same settled-vs-pending split (a booking still marked Pending hasn't paid for
-  // its meals either, so that food share counts as pending here too, not revenue).
-  const restaurantFoodShare = foodShareInRange(bookings, from, to, roomsById, roomTypesById, paymentsByBookingForPendingCheck);
-  // Gross revenue = everything billed, paid or not — same convention as roomRevenue
-  // (bookingTotal includes pending bookings' full amount too). Pending is a separate,
-  // informational subset of that total, not subtracted from it.
-  const restaurantSalesTotal = restaurantInRange.reduce((acc, s) => acc + restaurantBooked(s.onlineAmount, s.cashAmount, s.pendingAmount), 0) + restaurantFoodShare.settled + restaurantFoodShare.pending;
+  // foodShareInRange call and room-type Food Share config.
+  const restaurantFoodShare = foodShareInRange(bookings, from, to, roomsById, roomTypesById);
+  const restaurantSalesTotal = restaurantInRange.reduce((acc, s) => acc + restaurantBooked(s.onlineAmount, s.cashAmount, s.pendingAmount), 0) + restaurantFoodShare;
   const restaurantCollectedTotal = restaurantInRange.reduce((acc, s) => acc + restaurantCollected(s.onlineAmount, s.cashAmount), 0);
-  const restaurantPending = restaurantInRange.reduce((acc, s) => acc + s.pendingAmount, 0) + restaurantFoodShare.pending;
+  const restaurantPending = restaurantInRange.reduce((acc, s) => acc + s.pendingAmount, 0);
 
   const banquetInRange = banquetSales.filter(s => inRange(s.saleDate, from, to));
   const banquetBookingsInRange = banquetBookings.filter(b => inRange(b.eventDate, from, to));
@@ -143,9 +129,8 @@ export function OwnerDashboardPage() {
     return dates.map(date => {
       const dayRoom = bookings.filter(b => b.checkIn === date).reduce((acc, b) => acc + bookingTotal(b), 0);
       const sale = restaurantSales.find(s => s.saleDate === date);
-      const dayFoodShare = foodShareOnDate(bookings, date, roomsById, roomTypesById, paymentsByBookingForPendingCheck);
       const dayRestaurant = (sale ? restaurantBooked(sale.onlineAmount, sale.cashAmount, sale.pendingAmount) : 0)
-        + dayFoodShare.settled + dayFoodShare.pending;
+        + foodShareOnDate(bookings, date, roomsById, roomTypesById);
       const dayBanquetSales = banquetSales.find(s => s.saleDate === date);
       const dayBanquetEvents = banquetBookings.filter(b => b.eventDate === date).reduce((acc, b) => acc + b.quotedAmount, 0);
       const dayBanquet = (dayBanquetSales ? dayBanquetSales.onlineAmount + dayBanquetSales.cashAmount : 0) + dayBanquetEvents;
@@ -159,7 +144,7 @@ export function OwnerDashboardPage() {
         Revenue: totalRev / 100 
       };
     });
-  }, [bookings, restaurantSales, banquetSales, from, to, roomsById, roomTypesById, paymentsByBookingForPendingCheck]);
+  }, [bookings, restaurantSales, banquetSales, from, to, roomsById, roomTypesById]);
 
   return (
     <div className="space-y-6">
